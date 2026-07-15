@@ -1,0 +1,5 @@
+model,task,test_acc,f1,auc,val_samples,approach,semester
+PCA + VotingClassifier,mri_binary,0.65,0.643,0.72,41,Traditional ML,Previous
+ResNet18,mri_binary,0.8383,0.8383,0.9173,2140,Deep Learning,Current
+EfficientNet-B0,mri_binary,0.714,0.714,0.7895,2140,Deep Learning,Current
+ResNet18+EfficientNet,mri_binary,0.8421,0.8421,0.9117,2140,Deep Learning Ensemble,Current

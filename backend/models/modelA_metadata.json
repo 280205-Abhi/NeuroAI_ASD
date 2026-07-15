@@ -1,0 +1,78 @@
+{
+  "feature_names": [
+    "CNR",
+    "SNR",
+    "Qi1",
+    "EFC",
+    "Smoothness_of_Voxels",
+    "FBER",
+    "Cortical Contrast",
+    "func_SNR",
+    "func_EFC",
+    "func_Smoothness_of_Voxels",
+    "func_FBER",
+    "func_GSR",
+    "func_mFD",
+    "func_PercentFD_greater_than_0.20",
+    "func_NumFD_greater_than_0.20",
+    "func_DVARS",
+    "func_Outliers",
+    "func_GCORR",
+    "func_Median_Distance_Index",
+    "AGE_AT_SCAN",
+    "SEX"
+  ],
+  "drop_cols": [
+    "dti_SNR",
+    "dti_EFC",
+    "dti_Smoothness_of_Voxels",
+    "dti_FBER",
+    "dti_GSR",
+    "dti_mFD",
+    "dti_PercentFD_greater_than_0.20",
+    "dti_NumFD_greater_than_0.20",
+    "dti_DVARS",
+    "dti_Outliers",
+    "dti_GCORR",
+    "dti_Median_Distance_Index"
+  ],
+  "test_size": 0.2,
+  "random_state": 42,
+  "model_results": {
+    "Random Forest": {
+      "acc": 0.6938,
+      "f1": 0.6322,
+      "auc": 0.7542
+    },
+    "XGBoost": {
+      "acc": 0.6842,
+      "f1": 0.6333,
+      "auc": 0.767
+    },
+    "LightGBM": {
+      "acc": 0.6842,
+      "f1": 0.6333,
+      "auc": 0.7633
+    },
+    "SVM": {
+      "acc": 0.6364,
+      "f1": 0.5914,
+      "auc": 0.7233
+    },
+    "Logistic Reg": {
+      "acc": 0.6268,
+      "f1": 0.5618,
+      "auc": 0.6994
+    },
+    "Ensemble": {
+      "acc": 0.6746,
+      "f1": 0.6264,
+      "auc": 0.7665
+    }
+  },
+  "calibrated_ensemble": {
+    "acc": 0.6842,
+    "f1": 0.6207,
+    "auc": 0.7608
+  }
+}

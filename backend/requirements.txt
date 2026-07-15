@@ -1,0 +1,17 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+numpy
+pandas
+scikit-learn
+shap
+matplotlib
+plotly
+Pillow
+torch
+torchvision
+librosa
+soundfile
+opencv-python-headless
+reportlab
+grad-cam

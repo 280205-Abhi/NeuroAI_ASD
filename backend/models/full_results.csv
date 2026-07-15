@@ -1,0 +1,27 @@
+task,model,test_acc,f1,auc,cv,overfit_gap
+severity,Logistic Regression,0.6207,0.6193,0.722,0.5482,0.1918
+severity,Decision Tree,0.5172,0.5295,0.6109,0.5356,0.3042
+severity,K-Nearest Neighbors,0.5517,0.5355,0.6375,0.5585,0.1893
+severity,SVM (RBF),0.4828,0.4871,0.6906,0.6099,0.4012
+severity,Naive Bayes,0.3793,0.3017,0.6876,0.2278,0.0939
+severity,MLP Neural Net,0.4828,0.4425,0.6228,0.4951,0.0172
+severity,Random Forest,0.6552,0.652,0.7871,0.6807,0.3448
+severity,Extra Trees,0.6207,0.6159,0.7582,0.6777,0.3793
+severity,Gradient Boosting,0.6897,0.683,0.8053,0.6392,0.3103
+severity,AdaBoost,0.6552,0.6545,0.7884,0.5986,0.077
+severity,Bagging (DT),0.6552,0.652,0.813,0.6607,0.3091
+severity,Voting Ensemble,0.6552,0.652,0.7914,0.6634,0.3448
+severity,Stacking Ensemble,0.6552,0.652,0.7779,0.6437,0.3448
+binary,Logistic Regression,0.6897,0.7221,0.73,0.8158,0.2032
+binary,Decision Tree,0.8621,0.8791,0.915,0.7988,0.0397
+binary,K-Nearest Neighbors,0.931,0.9209,0.65,0.7781,-0.056
+binary,SVM (RBF),0.7586,0.7838,0.78,0.8297,0.1789
+binary,Naive Bayes,0.2414,0.2594,0.71,0.2746,0.0175
+binary,MLP Neural Net,0.8621,0.7982,0.36,0.756,-0.0139
+binary,Random Forest,0.9655,0.9634,0.98,0.7825,0.0345
+binary,Extra Trees,0.8966,0.8902,0.93,0.8216,0.1034
+binary,Gradient Boosting,0.8966,0.9012,0.94,0.8773,0.1034
+binary,AdaBoost,0.8966,0.8684,0.935,0.8039,-0.0305
+binary,Bagging (DT),0.8966,0.9012,0.92,0.8921,0.0856
+binary,Voting Ensemble,0.8966,0.9012,0.98,0.872,0.1034
+binary,Stacking Ensemble,0.931,0.9209,0.98,0.793,0.0511
