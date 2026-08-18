@@ -3,7 +3,6 @@ import { PageHeader, Card } from "../components/ui";
 
 const STEPS = [
   ["🧠", "MRI Analysis", "Upload brain MRI → Get ASD prediction + heatmap"],
-  ["🎙️", "Speech Analyzer", "Upload audio → Get prosodic risk assessment"],
   ["📋", "Screening", "Answer 10 questions → Get behavioural risk score"],
   ["🔬", "XAI Deep Dive", "Understand WHY the model made its prediction"],
   ["📄", "Report", "Download PDF summary of all findings"],
@@ -12,8 +11,7 @@ const STEPS = [
 const ARCH = [
   ["🏥", "Clinical Data", "25 features\nABIDE dataset"],
   ["🧠", "Brain MRI", "10,665 images\nABIDE MPRAGE"],
-  ["🎙️", "Speech", "Prosodic features\nRule-based XAI"],
-  ["⚙️", "Ensemble", "3-level fusion\nWeighted voting"],
+  ["⚙️", "Ensemble", "Multi-level fusion\nWeighted voting"],
   ["📊", "Explainability", "SHAP + GradCAM\nCounterfactual"],
 ];
 

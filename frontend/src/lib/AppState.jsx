@@ -5,7 +5,6 @@ const Ctx = createContext(null);
 export function AppStateProvider({ children }) {
   const [mriResult, setMriResult] = useState(null);
   const [mriShapResult, setMriShapResult] = useState(null);
-  const [speechResult, setSpeechResult] = useState(null);
   const [qResult, setQResult] = useState(null);
   const [clinicalResult, setClinicalResult] = useState(null);
   const [childName, setChildName] = useState("");
@@ -14,7 +13,6 @@ export function AppStateProvider({ children }) {
   const value = {
     mriResult, setMriResult,
     mriShapResult, setMriShapResult,
-    speechResult, setSpeechResult,
     qResult, setQResult,
     clinicalResult, setClinicalResult,
     childName, setChildName,

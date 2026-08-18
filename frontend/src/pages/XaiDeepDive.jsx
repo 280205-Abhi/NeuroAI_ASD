@@ -325,20 +325,20 @@ function ConflictTab() {
 
 function WhatIfTab() {
   const [mriProb, setMriProb] = useState(0.5);
-  const [speechRisk, setSpeechRisk] = useState(30);
+  const [clinicalProb, setClinicalProb] = useState(0.6);
   const [qScore, setQScore] = useState(3);
-  const [wMri, setWMri] = useState(0.5);
-  const [wSp, setWSp] = useState(0.3);
+  const [wMri, setWMri] = useState(0.4);
+  const [wClin, setWClin] = useState(0.4);
   const [wQ, setWQ] = useState(0.2);
 
-  const total = wMri + wSp + wQ || 1;
-  const nMri = wMri / total, nSp = wSp / total, nQ = wQ / total;
-  const fused = nMri * mriProb + nSp * (speechRisk / 100) + nQ * (qScore / 10);
+  const total = wMri + wClin + wQ || 1;
+  const nMri = wMri / total, nClin = wClin / total, nQ = wQ / total;
+  const fused = nMri * mriProb + nClin * clinicalProb + nQ * (qScore / 10);
   const level = fused < 0.25 ? ["Low Risk", "#22C55E"] : fused < 0.45 ? ["Borderline", "#EAB308"] : fused < 0.65 ? ["Moderate Risk", "#F97316"] : fused < 0.8 ? ["High Risk", "#EF4444"] : ["Very High Risk", "#DC2626"];
 
   const contribData = [
     { name: "MRI", value: +(nMri * mriProb * 100).toFixed(1) },
-    { name: "Speech", value: +(nSp * (speechRisk / 100) * 100).toFixed(1) },
+    { name: "Clinical", value: +(nClin * clinicalProb * 100).toFixed(1) },
     { name: "Screening", value: +(nQ * (qScore / 10) * 100).toFixed(1) },
   ];
 
@@ -349,13 +349,13 @@ function WhatIfTab() {
         <div className="card">
           <div className="card-title">Input Probabilities</div>
           <RangeField label={`MRI ASD Probability: ${mriProb.toFixed(2)}`} value={mriProb} min={0} max={1} step={0.01} onChange={setMriProb} />
-          <RangeField label={`Speech Risk Score: ${speechRisk}`} value={speechRisk} min={0} max={100} step={5} onChange={setSpeechRisk} />
+          <RangeField label={`Clinical ASD Probability: ${clinicalProb.toFixed(2)}`} value={clinicalProb} min={0} max={1} step={0.01} onChange={setClinicalProb} />
           <RangeField label={`Screening Score: ${qScore}`} value={qScore} min={0} max={10} step={1} onChange={setQScore} />
         </div>
         <div className="card">
           <div className="card-title">Module Weights</div>
           <RangeField label={`MRI Weight: ${wMri.toFixed(2)}`} value={wMri} min={0} max={1} step={0.05} onChange={setWMri} />
-          <RangeField label={`Speech Weight: ${wSp.toFixed(2)}`} value={wSp} min={0} max={1} step={0.05} onChange={setWSp} />
+          <RangeField label={`Clinical Weight: ${wClin.toFixed(2)}`} value={wClin} min={0} max={1} step={0.05} onChange={setWClin} />
           <RangeField label={`Screening Weight: ${wQ.toFixed(2)}`} value={wQ} min={0} max={1} step={0.05} onChange={setWQ} />
         </div>
       </div>

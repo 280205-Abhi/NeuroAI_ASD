@@ -38,7 +38,6 @@ def status():
         "clinical_ensemble": clinical_ok,
         "mri_resnet": mri_ok,
         "mri_effnet": mri_ok and effnet is not None,
-        "speech_analyzer": True,
         "xai_engine": True,
     }
 
@@ -80,18 +79,6 @@ async def mri_shap(file: UploadFile = File(...)):
     if not result["success"]:
         raise HTTPException(500, result.get("error", "SHAP failed"))
     return {"success": True, "shap_img_b64": ml.pil_to_b64(result["shap_img"]), "method": result["method"]}
-
-
-# ── Speech ───────────────────────────────────────────────────
-
-@app.post("/api/speech/analyze")
-async def speech_analyze(file: UploadFile = File(...)):
-    raw_bytes = await file.read()
-    suffix = Path(file.filename or "audio.wav").suffix or ".wav"
-    result = ml.analyze_speech(raw_bytes, suffix=suffix)
-    if not result["success"]:
-        raise HTTPException(500, result.get("error", "Speech analysis failed"))
-    return result
 
 
 # ── Screening ────────────────────────────────────────────────
@@ -199,8 +186,8 @@ class ReportRequest(BaseModel):
     patient_name: str = ""
     patient_age: int = 60
     mri_result: dict | None = None
-    speech_result: dict | None = None
     q_result: dict | None = None
+    clinical_result: dict | None = None
 
 
 @app.post("/api/report/generate")
@@ -210,8 +197,8 @@ def report_generate(req: ReportRequest):
         patient_name=req.patient_name,
         patient_age=req.patient_age,
         mri_result=req.mri_result,
-        speech_result=req.speech_result,
         q_result=req.q_result,
+        clinical_result=req.clinical_result,
     )
     filename = f"NeuroAI_Report_{(req.patient_name or 'Patient').replace(' ', '_')}_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf"
     return StreamingResponse(

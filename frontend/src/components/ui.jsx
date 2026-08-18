@@ -73,7 +73,6 @@ export function StatusPanel({ status }) {
         [status.clinical_ensemble, "Clinical Ensemble"],
         [status.mri_resnet, "MRI ResNet18"],
         [status.mri_effnet ? true : status.mri_resnet ? "warn" : false, "MRI EfficientNet"],
-        [status.speech_analyzer, "Speech Analyzer"],
         [status.xai_engine, "XAI Engine"],
       ]
     : [[false, "Loading..."]];

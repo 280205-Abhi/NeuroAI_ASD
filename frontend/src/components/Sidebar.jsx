@@ -6,7 +6,6 @@ import { StatusPanel } from "./ui";
 const NAV = [
   { to: "/", icon: "🏠", label: "Overview" },
   { to: "/mri", icon: "🧠", label: "MRI Analysis" },
-  { to: "/speech", icon: "🎙️", label: "Speech Analyzer" },
   { to: "/screening", icon: "📋", label: "Screening" },
   { to: "/xai", icon: "🔬", label: "XAI Deep Dive" },
   { to: "/comparison", icon: "📊", label: "Model Comparison" },

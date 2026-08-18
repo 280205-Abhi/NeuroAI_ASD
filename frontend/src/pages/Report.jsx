@@ -5,7 +5,7 @@ import { useAppState } from "../lib/AppState";
 
 export default function Report() {
   const {
-    mriResult, speechResult, qResult,
+    mriResult, qResult, clinicalResult,
     childName, setChildName, childAge, setChildAge,
   } = useAppState();
   const [loading, setLoading] = useState(false);
@@ -13,9 +13,9 @@ export default function Report() {
   const [downloadUrl, setDownloadUrl] = useState(null);
 
   const hasMri = !!mriResult?.success;
-  const hasSpeech = !!speechResult?.success;
   const hasQ = !!qResult;
-  const anyResult = hasMri || hasSpeech || hasQ;
+  const hasClinical = !!clinicalResult?.success;
+  const anyResult = hasMri || hasQ || hasClinical;
 
   async function generate() {
     setLoading(true);
@@ -26,8 +26,8 @@ export default function Report() {
         patient_name: childName,
         patient_age: childAge,
         mri_result: mriResult,
-        speech_result: speechResult,
         q_result: qResult,
+        clinical_result: clinicalResult,
       });
       setDownloadUrl(URL.createObjectURL(blob));
     } catch (e) {
@@ -38,8 +38,8 @@ export default function Report() {
   }
 
   const items = [
+    ["Clinical Behaviour", hasClinical],
     ["MRI Analysis", hasMri],
-    ["Speech", hasSpeech],
     ["Screening", hasQ],
   ];
 

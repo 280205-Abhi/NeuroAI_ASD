@@ -8,7 +8,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
-def generate_pdf(patient_name, patient_age, mri_result=None, speech_result=None, q_result=None):
+def generate_pdf(patient_name, patient_age, mri_result=None, q_result=None, clinical_result=None):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=0.8 * inch, bottomMargin=0.8 * inch,
                              leftMargin=0.8 * inch, rightMargin=0.8 * inch)
@@ -17,7 +17,9 @@ def generate_pdf(patient_name, patient_age, mri_result=None, speech_result=None,
 
     title_s = ParagraphStyle("T", parent=styles["Title"], fontSize=18, textColor=colors.HexColor("#0A1628"), spaceAfter=4)
     sub_s = ParagraphStyle("S", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#64748B"))
-    h2_s = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#1E3A5F"), spaceBefore=12)
+    h2_s = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#1E3A5F"), spaceBefore=12, spaceAfter=6)
+    cell_s = ParagraphStyle("Cell", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#1E293B"))
+    header_cell_s = ParagraphStyle("HCell", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#1E3A5F"), fontName="Helvetica-Bold")
 
     story.append(Paragraph("NeuroAI — ASD Screening Report", title_s))
     story.append(Paragraph("AI-assisted multimodal ASD screening | For clinical support use only", sub_s))
@@ -47,7 +49,64 @@ def generate_pdf(patient_name, patient_age, mri_result=None, speech_result=None,
     ]))
     story.append(pt)
 
+    # ── Clinical Behaviour Model Assessment ─────────────────
+    if clinical_result and clinical_result.get("success"):
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph("Clinical Behaviour Assessment", h2_s))
+
+        is_asd = clinical_result.get("bin_pred") == 1
+        bin_prob = clinical_result.get("bin_prob", [0.5, 0.5])
+        conf_pct = (bin_prob[1 if is_asd else 0]) * 100
+        sev_label = clinical_result.get("sev_label", "N/A")
+        sev_prob = clinical_result.get("sev_prob", [0, 0, 0])
+
+        c_color = colors.HexColor("#FEE2E2") if is_asd else colors.HexColor("#DCFCE7")
+        c_status_str = f"ASD Detected ({conf_pct:.1f}% confidence)" if is_asd else f"No ASD ({conf_pct:.1f}% confidence)"
+
+        sev_dist_str = f"No ASD: {sev_prob[0]*100:.1f}% | Mild-Moderate: {sev_prob[1]*100:.1f}% | Severe: {sev_prob[2]*100:.1f}%"
+
+        ct = Table([
+            ["Clinical Risk Status", c_status_str],
+            ["Predicted Severity Grade", sev_label],
+            ["Severity Distribution", sev_dist_str],
+        ], colWidths=[2 * inch, 4 * inch])
+        ct.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), c_color),
+            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ]))
+        story.append(ct)
+
+        # Render Top Clinical SHAP Feature Attributions
+        shap_list = clinical_result.get("shap", [])
+        if shap_list:
+            story.append(Spacer(1, 0.08 * inch))
+            story.append(Paragraph("Key Clinical Feature Attributions (SHAP)", ParagraphStyle("SubH", parent=styles["Normal"], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A5F"))))
+
+            shap_table_data = [
+                [Paragraph("Feature", header_cell_s), Paragraph("Patient Value", header_cell_s), Paragraph("SHAP Impact", header_cell_s), Paragraph("Direction", header_cell_s)]
+            ]
+            for r in shap_list[:6]:
+                dir_str = "↑ Increases ASD Risk" if r["shap"] > 0 else "↓ Decreases ASD Risk"
+                shap_table_data.append([
+                    Paragraph(str(r["feature"]), cell_s),
+                    Paragraph(str(r["value"]), cell_s),
+                    Paragraph(f"{r['shap']:+.4f}", cell_s),
+                    Paragraph(dir_str, cell_s),
+                ])
+
+            st_table = Table(shap_table_data, colWidths=[2.2 * inch, 1.2 * inch, 1.1 * inch, 1.5 * inch])
+            st_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]))
+            story.append(st_table)
+
+    # ── MRI Brain Analysis ────────────────────────────────────
     if mri_result and mri_result.get("success"):
+        story.append(Spacer(1, 0.1 * inch))
         story.append(Paragraph("MRI Brain Analysis", h2_s))
         pred = mri_result["prediction"]
         m_color = colors.HexColor("#FEE2E2") if pred == "ASD" else colors.HexColor("#DCFCE7")
@@ -65,24 +124,9 @@ def generate_pdf(patient_name, patient_age, mri_result=None, speech_result=None,
         ]))
         story.append(mt)
 
-    if speech_result and speech_result.get("success"):
-        story.append(Paragraph("Speech Prosody Analysis", h2_s))
-        st_table = Table([
-            ["Risk Level", speech_result["risk_level"]],
-            ["Risk Score", f"{speech_result['risk_score']}/100"],
-            ["Pitch Variance", f"{speech_result['pitch_std']:.1f} Hz"],
-            ["Speech Activity", f"{speech_result['speech_ratio']*100:.0f}%"],
-            ["Detected Flags", " | ".join(speech_result["flags"][:2])],
-        ], colWidths=[2 * inch, 4 * inch])
-        st_table.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), 10),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-        ]))
-        story.append(st_table)
-
+    # ── Behavioural Screening Questionnaire ───────────────────
     if q_result:
+        story.append(Spacer(1, 0.1 * inch))
         story.append(Paragraph("Behavioural Screening", h2_s))
         q_color = {
             "Low Risk": colors.HexColor("#DCFCE7"),

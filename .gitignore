@@ -30,6 +30,7 @@ node_modules/
 dist/
 build/
 .vite/
+*.timestamp*.mjs
 
 # Environment files
 .env

@@ -28,12 +28,6 @@ export const api = {
     return fetch(`${BASE}/mri/shap`, { method: "POST", body: fd }).then(handle);
   },
 
-  speechAnalyze: (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    return fetch(`${BASE}/speech/analyze`, { method: "POST", body: fd }).then(handle);
-  },
-
   screeningQuestions: () => fetch(`${BASE}/screening/questions`).then(handle),
   screeningScore: (answers) =>
     fetch(`${BASE}/screening/score`, {

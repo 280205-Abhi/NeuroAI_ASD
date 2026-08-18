@@ -14,7 +14,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import cv2
-import librosa
 import numpy as np
 import pandas as pd
 import shap
@@ -278,65 +277,6 @@ def get_risk_badge(prob):
     elif p < 80:
         return "High Risk", "high"
     return "Very High Risk", "very-high"
-
-
-# ── Speech ───────────────────────────────────────────────────
-
-def analyze_speech(audio_bytes, suffix=".wav"):
-    try:
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(audio_bytes)
-            tmp_path = tmp.name
-
-        y, sr = librosa.load(tmp_path, duration=30)
-        os.unlink(tmp_path)
-        duration = librosa.get_duration(y=y, sr=sr)
-
-        f0, voiced_flag, _ = librosa.pyin(y, fmin=50, fmax=500)
-        voiced_f0 = f0[voiced_flag] if voiced_flag is not None else np.array([])
-        pitch_mean = float(np.mean(voiced_f0)) if len(voiced_f0) > 0 else 0.0
-        pitch_std = float(np.std(voiced_f0)) if len(voiced_f0) > 0 else 0.0
-        pitch_range = float(np.max(voiced_f0) - np.min(voiced_f0)) if len(voiced_f0) > 0 else 0.0
-
-        rms = librosa.feature.rms(y=y)[0]
-        speech_ratio = float(np.sum(rms > 0.01) / len(rms))
-        pause_ratio = float(np.sum(rms < 0.01) / len(rms))
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        tempo = float(np.asarray(tempo).reshape(-1)[0])
-        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-        mfcc_var = float(np.var(mfcc))
-
-        risk_score = 0
-        flags = []
-        if pitch_std < 20 and pitch_mean > 0:
-            risk_score += 25
-            flags.append("Monotone speech pattern")
-        if speech_ratio < 0.3:
-            risk_score += 20
-            flags.append("Low speech activity")
-        if pause_ratio > 0.6:
-            risk_score += 20
-            flags.append("Excessive pausing")
-        if mfcc_var < 50:
-            risk_score += 15
-            flags.append("Low prosodic variation")
-        if pitch_range < 50 and pitch_mean > 0:
-            risk_score += 20
-            flags.append("Narrow pitch range")
-        if not flags:
-            flags.append("No significant prosodic risk markers")
-
-        risk_level = "Low" if risk_score < 30 else "Moderate" if risk_score < 60 else "High"
-
-        return {
-            "success": True, "duration": duration, "pitch_mean": pitch_mean,
-            "pitch_std": pitch_std, "pitch_range": pitch_range,
-            "speech_ratio": speech_ratio, "pause_ratio": pause_ratio,
-            "tempo": float(tempo), "mfcc_var": mfcc_var,
-            "risk_score": risk_score, "risk_level": risk_level, "flags": flags,
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 
 # ── Screening questionnaire ──────────────────────────────────
