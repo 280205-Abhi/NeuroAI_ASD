@@ -28,7 +28,7 @@ const YES_NO_FIELDS = [
 ];
 
 const NUM_FIELDS = [
-  ["age_months", "Age (months)"], ["IQ", "IQ Score"], ["ADOS", "ADOS Score"],
+  ["age_months", "Age (years)"], ["IQ", "IQ Score"], ["ADOS", "ADOS Score"],
   ["QA_VABS", "QA VABS Score"], ["QS", "QS Score"], ["DQ", "DQ Score"], ["DQ_IQ", "DQ/IQ Ratio"],
   ["n_alterated_chromosomes", "No. Altered Chromosomes"], ["n_mutations", "No. Mutations"],
   ["n_dup", "No. Duplications"], ["n_del", "No. Deletions"],

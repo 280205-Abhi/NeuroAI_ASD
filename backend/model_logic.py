@@ -332,13 +332,13 @@ def score_questionnaire(answers):
 # ── Clinical SHAP ────────────────────────────────────────────
 
 CLINICAL_FEATURE_KEYS = [
-    "age_months", "gender", "pregnancy_problems", "normally_evolved_perinatal_phenomena",
-    "birth_anomalies", "psychiatric_disorders_familiarity", "QS", "IQ", "QA_VABS", "ADOS",
-    "I_intellective_impairment", "II_language_impairment", "III_known_medical_condition",
-    "III_history_environmental_exposure", "III_known_genetic_condition",
-    "IV_other_mental_behavioral_disorders", "other_psychiatric_comorbidities",
-    "nutrition_disorders", "CGH_array_alterations", "DQ", "DQ_IQ",
-    "n_alterated_chromosomes", "n_mutations", "n_dup", "n_del",
+    "age_months",
+    "gender",
+    "expressive_language",
+    "ADOS",
+    "joint_attention",
+    "repetitive_behavior",
+    "sensory_responsivity",
 ]
 
 SEV_LABELS = {0: "No ASD", 1: "Mild-Moderate ASD", 2: "Severe ASD"}
@@ -364,11 +364,29 @@ def run_clinical_shap(input_dict):
     sev_prob = sev_model.predict_proba(inp_sc)[0].tolist()
 
     try:
-        explainer = get_cached_tree_explainer(bin_model)
-        shap_vals = explainer.shap_values(inp_sc_df)
-        vals = extract_shap_vals(shap_vals)
+        vals = None
+        if hasattr(bin_model, "estimators_"):
+            vals_list = []
+            for est in bin_model.estimators_:
+                try:
+                    exp = get_cached_tree_explainer(est)
+                    sv = exp.shap_values(inp_sc_df)
+                    vals_list.append(extract_shap_vals(sv))
+                except Exception:
+                    pass
+            if vals_list:
+                vals = np.mean(vals_list, axis=0)
+
+        if vals is None:
+            try:
+                explainer = get_cached_tree_explainer(bin_model)
+                shap_vals = explainer.shap_values(inp_sc_df)
+                vals = extract_shap_vals(shap_vals)
+            except Exception:
+                vals = np.zeros(len(features))
+
         shap_summary = sorted(
-            [{"feature": f, "value": round(float(inp_sc_df.iloc[0][f]), 3),
+            [{"feature": f, "value": round(float(inp_df.iloc[0][f]), 3),
               "shap": round(float(v), 4)} for f, v in zip(features, vals)],
             key=lambda r: abs(r["shap"]), reverse=True,
         )

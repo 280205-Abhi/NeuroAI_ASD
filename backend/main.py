@@ -137,31 +137,13 @@ def screening_score(req: ScreeningRequest):
 # ── Clinical SHAP / ensemble conflict ───────────────────────
 
 class ClinicalRequest(BaseModel):
-    age_months: float
-    gender: int
-    pregnancy_problems: int
-    normally_evolved_perinatal_phenomena: int
-    birth_anomalies: int
-    psychiatric_disorders_familiarity: int
-    QS: float
-    IQ: float
-    QA_VABS: float
-    ADOS: float
-    I_intellective_impairment: int
-    II_language_impairment: int
-    III_known_medical_condition: int
-    III_history_environmental_exposure: int
-    III_known_genetic_condition: int
-    IV_other_mental_behavioral_disorders: int
-    other_psychiatric_comorbidities: int
-    nutrition_disorders: int
-    CGH_array_alterations: int
-    DQ: float
-    DQ_IQ: float
-    n_alterated_chromosomes: int
-    n_mutations: int
-    n_dup: int
-    n_del: int
+    age_months: float = 28.0
+    gender: int = 1
+    expressive_language: int = 1
+    ADOS: float = 7.0
+    joint_attention: int = 1
+    repetitive_behavior: int = 1
+    sensory_responsivity: int = 1
 
 
 @app.post("/api/clinical/predict")

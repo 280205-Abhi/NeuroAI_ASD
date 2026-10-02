@@ -25,7 +25,7 @@ pip-wheel-metadata/
 *.bin
 *.ckpt
 *.h5
-
+!backend/models/**
 
 # Node / Vite
 node_modules/

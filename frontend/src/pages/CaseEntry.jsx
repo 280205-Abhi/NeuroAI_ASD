@@ -58,12 +58,11 @@ export default function CaseEntry() {
                 <label className="label-caps" style={{ display: "block", marginBottom: "0.3rem" }}>Age at assessment (years)</label>
                 <input
                   type="number"
-                  min={1}
-                  max={25}
+                  min={0.1}
                   step={0.1}
                   className="input-field numeric"
                   value={ageMonths}
-                  onChange={(e) => updateCase({ ageMonths: parseFloat(e.target.value) || 2 })}
+                  onChange={(e) => updateCase({ ageMonths: e.target.value })}
                   required
                 />
               </div>

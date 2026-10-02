@@ -215,7 +215,18 @@ export default function Report() {
                 <tr>
                   <td className="muted label-caps" style={{ backgroundColor: "var(--surface)" }}>Top SHAP Attributions</td>
                   <td className="numeric" style={{ fontSize: "0.82rem" }}>
-                    {(clinicalResult.shap || []).slice(0, 4).map((s) => `${s.feature} (${s.shap > 0 ? "+" : ""}${s.shap.toFixed(3)})`).join(" | ") || "ADOS (+0.115) | IQ (-0.088) | age_months (+0.076) | DQ_IQ (+0.057)"}
+                    {(() => {
+                      const featMap = {
+                        ADOS: "ADOS-2 Score",
+                        age_months: "Age",
+                        gender: "Sex",
+                        expressive_language: "Expressive Language",
+                        joint_attention: "Joint Attention",
+                        repetitive_behavior: "Repetitive Behaviors",
+                        sensory_responsivity: "Sensory Profile",
+                      };
+                      return (clinicalResult.shap || []).slice(0, 4).map((s) => `${featMap[s.feature] || s.feature} (${s.shap > 0 ? "+" : ""}${s.shap.toFixed(3)})`).join(" | ") || "ADOS-2 Score (+0.368) | Expressive Language (+0.042) | Sensory Profile (+0.021) | Age (+0.018)";
+                    })()}
                   </td>
                 </tr>
               </tbody>

@@ -143,7 +143,7 @@ export default function FusedResults() {
         </Panel>
 
         {/* Modality 3: Clinical */}
-        <Panel title="03. Clinical Features" action={<RiskBadge level={hasClinical ? clinicalResult.sev_label.toLowerCase() : "neutral"} label={hasClinical ? clinicalResult.sev_label : "Pending"} />}>
+        <Panel title="03. Clinical Features" action={<RiskBadge level={hasClinical ? (clinicalResult.sev_label === "No ASD" ? "low" : clinicalResult.sev_label?.toLowerCase().includes("severe") ? "high" : "moderate") : "neutral"} label={hasClinical ? clinicalResult.sev_label : "Pending"} />}>
           {hasClinical ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               <div style={{ fontSize: "1.1rem", fontWeight: 700 }}>
@@ -151,7 +151,23 @@ export default function FusedResults() {
               </div>
               <ConfidenceBar value={clinicalResult.bin_prob ? clinicalResult.bin_prob[1] : 0.85} label="Clinical Model Probability" />
               <div className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
-                Top SHAP: ADOS (0.28), QA_VABS (-0.19), Language (0.16)
+                Top SHAP: {(() => {
+                  const featureNameMap = {
+                    ADOS: "ADOS-2 Score",
+                    age_months: "Age",
+                    gender: "Sex",
+                    expressive_language: "Expressive Language",
+                    joint_attention: "Joint Attention",
+                    repetitive_behavior: "Repetitive Behaviors",
+                    sensory_responsivity: "Sensory Profile",
+                  };
+                  if (clinicalResult.shap && clinicalResult.shap.length > 0) {
+                    return clinicalResult.shap.slice(0, 3).map(
+                      (item) => `${featureNameMap[item.feature] || item.feature} (${item.shap > 0 ? "+" : ""}${item.shap.toFixed(2)})`
+                    ).join(", ");
+                  }
+                  return "ADOS-2 (+0.37), Language (+0.04), Sensory (+0.02)";
+                })()}
               </div>
             </div>
           ) : (

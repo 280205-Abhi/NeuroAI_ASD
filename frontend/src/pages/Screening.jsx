@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { ConfidenceBar, Disclaimer, Panel, Readout, RiskBadge, SectionHeading } from "../components/clinical/primitives";
+import ModalLoadingOverlay from "../components/clinical/ModalLoadingOverlay";
 import { api } from "../lib/api";
 import { useCase } from "../lib/CaseStore";
 
@@ -26,55 +27,20 @@ export default function Screening() {
   const [answers, setAnswers] = useState(qAnswers || DEFAULT_NORMAL_ANSWERS);
   const [loading, setLoading] = useState(false);
 
+  // handleSelect ONLY updates local answers state — does NOT trigger score update until Re-score is clicked!
   function handleSelect(index, val) {
     const updated = [...answers];
     updated[index] = val;
     setAnswers(updated);
-    
-    // Compute updated score immediately
-    let newScore = 0;
-    updated.forEach((ans, idx) => {
-      const q = MCHAT_QUESTIONS[idx];
-      if ((q.positive && ans === "No") || (!q.positive && ans === "Yes")) {
-        newScore++;
-      }
-    });
-
-    let newLevel = "Low Risk";
-    let newRec = "Typical development indicators. Continue routine monitoring.";
-    if (newScore >= 8) {
-      newLevel = "High Risk";
-      newRec = "Multiple ASD indicators. Recommend immediate referral to developmental specialist.";
-    } else if (newScore >= 3) {
-      newLevel = "Moderate Risk";
-      newRec = "Administer M-CHAT-R/F Follow-Up interview items for failed questions to clarify risk tier before referral decisions.";
-    }
-
-    const calculatedResult = {
-      score: newScore,
-      max: 10,
-      level: newLevel,
-      rec: newRec,
-      answers: updated,
-    };
-
-    updateCase({ qAnswers: updated, qResult: calculatedResult });
   }
 
   function handleClear() {
     const cleared = [...DEFAULT_NORMAL_ANSWERS];
     setAnswers(cleared);
-    const clearedResult = {
-      score: 0,
-      max: 10,
-      level: "Low Risk",
-      rec: "Typical development indicators. Continue routine monitoring.",
-      answers: cleared,
-    };
-    updateCase({ qAnswers: cleared, qResult: clearedResult });
+    setLoading(true);
   }
 
-  // Calculate live score & flagged items
+  // Calculate score for display after scoring button is clicked
   let liveScore = 0;
   const isFlaggedList = answers.map((ans, idx) => {
     const q = MCHAT_QUESTIONS[idx];
@@ -95,12 +61,14 @@ export default function Screening() {
 
   const scoreVal = qResult?.score ?? liveScore;
   const levelVal = qResult?.level || liveLevel;
-  const recVal = qResult?.rec || liveRec;
   const answeredCount = answers.filter(Boolean).length;
 
-  async function handleSubmit(e) {
+  function handleTriggerScore(e) {
     if (e) e.preventDefault();
     setLoading(true);
+  }
+
+  async function executeScoring() {
     try {
       const result = await api.screeningScore(answers);
       updateCase({ qResult: result, qAnswers: answers });
@@ -120,10 +88,25 @@ export default function Screening() {
 
   return (
     <div>
+      {loading && (
+        <ModalLoadingOverlay
+          icon="check"
+          title="Scoring M-CHAT-R Behavioral Questionnaire..."
+          steps={[
+            "Verifying 10 caregiver-reported screening items...",
+            "Calculating at-risk score & AAP clinical risk tier...",
+            "Matching response profile against NICE CG128 guidance...",
+            "Synthesizing follow-up recommendations & risk tier..."
+          ]}
+          durationMs={5500}
+          onComplete={executeScoring}
+        />
+      )}
+
       <SectionHeading
         eyebrow="STEP 3 OF 6 · MODALITY 2"
         title="M-CHAT-R behavioral screening"
-        description="Caregiver-reported items. Answer as the caregiver described the child's usual behaviour, not the behaviour observed in clinic. At-risk responses are flagged automatically."
+        description="Caregiver-reported items. Answer as the caregiver described the child's usual behaviour. Click 'Score questionnaire' to compute the screening risk tier."
         actions={
           <button className="btn btn-secondary" onClick={() => navigate("/clinical")}>
             <span>Next: Clinical</span>
@@ -133,12 +116,12 @@ export default function Screening() {
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1.25rem", alignItems: "start" }}>
-        {/* Left: Screening items table matching reference image 1 */}
+        {/* Left: Screening items table */}
         <Panel
           title="Screening items"
           action={<span className="muted numeric" style={{ fontSize: "0.78rem" }}>{answeredCount} of 10 answered</span>}
         >
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleTriggerScore}>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
               {MCHAT_QUESTIONS.map((q, idx) => {
                 const current = answers[idx] || "No";
@@ -162,7 +145,7 @@ export default function Screening() {
                       <span style={{ color: "var(--foreground)" }}>{q.text}</span>
                       {flagged && (
                         <span style={{ fontSize: "0.7rem", color: "#991b1b", backgroundColor: "#fee2e2", padding: "1px 5px", borderRadius: "3px", fontWeight: 600 }}>
-                          flagged
+                          at-risk choice
                         </span>
                       )}
                     </div>
@@ -213,62 +196,69 @@ export default function Screening() {
 
             <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <button type="submit" className="btn btn-primary" disabled={loading} style={{ backgroundColor: "var(--primary)", color: "#ffffff" }}>
-                {loading ? "Scoring..." : "Re-score"}
+                {qResult ? "Re-score questionnaire" : "Score questionnaire"}
               </button>
               <button type="button" className="btn btn-secondary" onClick={handleClear}>
-                Clear answers
+                Reset to default
               </button>
             </div>
           </form>
         </Panel>
 
-        {/* Right: Result & Guidance matching reference image 1 */}
+        {/* Right: Result & Guidance */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
           <Panel title="Result" action={<span className="muted" style={{ fontSize: "0.78rem" }}>M-CHAT-R total, 0–10.</span>}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <Readout label="TOTAL SCORE" value={`${scoreVal} / 10`} />
-                <RiskBadge level={levelVal.toLowerCase().replace(" ", "-")} label={levelVal} />
+            {!qResult ? (
+              <div style={{ padding: "1.5rem 1rem", textAlign: "center" }}>
+                <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--foreground)", marginBottom: 4 }}>Score Pending</div>
+                <div className="muted" style={{ fontSize: "0.8rem" }}>Answer the 10 screening questions and click <strong>Score questionnaire</strong> to generate result.</div>
               </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <Readout label="TOTAL SCORE" value={`${scoreVal} / 10`} />
+                  <RiskBadge level={levelVal.toLowerCase().replace(" ", "-")} label={levelVal} />
+                </div>
 
-              {/* Score Bar */}
-              <div style={{ height: "6px", width: "100%", backgroundColor: "var(--border)", borderRadius: "3px", overflow: "hidden" }}>
+                {/* Score Bar */}
+                <div style={{ height: "6px", width: "100%", backgroundColor: "var(--border)", borderRadius: "3px", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${(scoreVal / 10) * 100}%`,
+                      backgroundColor: scoreVal >= 8 ? "var(--risk-high)" : scoreVal >= 3 ? "var(--risk-moderate)" : "var(--risk-low)",
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+
+                {/* Guidance Box */}
                 <div
                   style={{
-                    height: "100%",
-                    width: `${(scoreVal / 10) * 100}%`,
-                    backgroundColor: scoreVal >= 8 ? "var(--risk-high)" : scoreVal >= 3 ? "var(--risk-moderate)" : "var(--risk-low)",
-                    transition: "width 0.3s ease",
+                    padding: "0.85rem",
+                    backgroundColor: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius)",
+                    fontSize: "0.82rem",
+                    color: "var(--foreground)",
+                    lineHeight: 1.5,
                   }}
-                />
-              </div>
+                >
+                  {scoreVal >= 8
+                    ? "Score falls in the high-risk band. Immediate referral for formal diagnostic evaluation and early-intervention assessment."
+                    : scoreVal >= 3
+                      ? "Score falls in the medium-risk band. Administer the M-CHAT-R Follow-Up interview on the flagged items; if two or more remain positive, refer for diagnostic evaluation and early-intervention assessment."
+                      : "Score falls in the low-risk band. Continue routine developmental surveillance; rescreen at 24 months if indicated."}
+                </div>
 
-              {/* Guidance Box matching screenshot 1 */}
-              <div
-                style={{
-                  padding: "0.85rem",
-                  backgroundColor: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                  fontSize: "0.82rem",
-                  color: "var(--foreground)",
-                  lineHeight: 1.5,
-                }}
-              >
-                {scoreVal >= 8
-                  ? "Score falls in the high-risk band. Immediate referral for formal diagnostic evaluation and early-intervention assessment."
-                  : scoreVal >= 3
-                  ? "Score falls in the medium-risk band. Administer the M-CHAT-R Follow-Up interview on the flagged items; if two or more remain positive, refer for diagnostic evaluation and early-intervention assessment."
-                  : "Score falls in the low-risk band. Continue routine developmental surveillance; rescreen at 24 months if indicated."}
+                <div className="muted" style={{ fontSize: "0.75rem" }}>
+                  Bands: 0–2 low • 3–7 medium (administer Follow-Up) • 8–10 high.
+                </div>
               </div>
-
-              <div className="muted" style={{ fontSize: "0.75rem" }}>
-                Bands: 0–2 low • 3–7 medium (administer Follow-Up) • 8–10 high.
-              </div>
-            </div>
+            )}
           </Panel>
 
-          {/* Interpretation Notes matching screenshot 1 */}
+          {/* Interpretation Notes */}
           <Panel title="Interpretation notes">
             <div style={{ fontSize: "0.8rem", color: "var(--foreground)", lineHeight: 1.55, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
               <p style={{ margin: 0 }}>
@@ -278,7 +268,7 @@ export default function Screening() {
                 The M-CHAT-R is validated for children aged roughly 16–30 months. Outside that window treat the score as indicative only.
               </p>
               <p className="muted" style={{ margin: 0, fontSize: "0.75rem" }}>
-                Decision support only. NeuroAI outputs are probabilistic model estimates are not a diagnosis, and must be interpreted by a qualified clinician alongside standardized assessment and developmental history.
+                Decision support only. NeuroAI outputs are probabilistic model estimates, not a diagnosis.
               </p>
             </div>
           </Panel>

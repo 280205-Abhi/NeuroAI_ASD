@@ -43,6 +43,25 @@ export function CaseProvider({ children }) {
     }
   }, []);
 
+  // Add confirmation prompt on browser reload (Ctrl+R / F5 / Tab Refresh) when active case data exists
+  useEffect(() => {
+    function handleBeforeUnload(e) {
+      if (
+        state.mriResult?.success ||
+        state.qResult ||
+        state.clinicalResult?.success ||
+        state.patientName ||
+        state.ageMonths
+      ) {
+        e.preventDefault();
+        e.returnValue = "You have active case data. Reloading will reset your current case session. Are you sure you want to reload?";
+        return e.returnValue;
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [state.mriResult, state.qResult, state.clinicalResult, state.patientName, state.ageMonths]);
+
   function updateCase(updates) {
     setState((prev) => ({ ...prev, ...updates }));
   }

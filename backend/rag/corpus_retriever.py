@@ -182,16 +182,21 @@ class CorpusRetriever:
             self.tfidf_vectorizer = None
             self.tfidf_matrix = None
 
-    def query(self, query_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def search(self, query_text: str = None, top_k: int = 3, query: str = None) -> List[Dict[str, Any]]:
+        """Searches guidelines (alias for query)."""
+        return self.query(query_text=query_text, top_k=top_k, query=query)
+
+    def query(self, query_text: str = None, top_k: int = 3, query: str = None) -> List[Dict[str, Any]]:
         """Queries guidelines via ChromaDB if active, otherwise via TF-IDF cosine similarity."""
-        if not self.documents:
+        query_str = query_text if query_text is not None else (query if query is not None else "")
+        if not self.documents or not query_str:
             return []
 
         # Strategy A: ChromaDB
         if self.use_chroma and self.chroma_collection:
             try:
                 results = self.chroma_collection.query(
-                    query_texts=[query_text],
+                    query_texts=[query_str],
                     n_results=min(top_k, len(self.documents))
                 )
                 formatted = []
@@ -214,7 +219,7 @@ class CorpusRetriever:
         if hasattr(self, 'tfidf_vectorizer') and self.tfidf_vectorizer is not None:
             try:
                 from sklearn.metrics.pairwise import cosine_similarity
-                query_vec = self.tfidf_vectorizer.transform([query_text])
+                query_vec = self.tfidf_vectorizer.transform([query_str])
                 similarities = cosine_similarity(query_vec, self.tfidf_matrix).flatten()
                 top_indices = similarities.argsort()[::-1][:top_k]
                 
@@ -228,7 +233,7 @@ class CorpusRetriever:
                 print(f"[CorpusRetriever] TF-IDF query error: {e}")
 
         # Fallback Strategy C: Simple word matching
-        keywords = set(re.findall(r'\w+', query_text.lower()))
+        keywords = set(re.findall(r'\w+', query_str.lower()))
         scored_docs = []
         for doc in self.documents:
             doc_words = set(re.findall(r'\w+', doc["text"].lower()))

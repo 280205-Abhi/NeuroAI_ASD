@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Upload, Sliders, ArrowRight, ImageIcon, Sparkles, LayoutGrid, Layers } from "lucide-react";
 import { ConfidenceBar, Disclaimer, Panel, Readout, RiskBadge, SectionHeading } from "../components/clinical/primitives";
+import ModalLoadingOverlay from "../components/clinical/ModalLoadingOverlay";
 import { api } from "../lib/api";
 import { useCase } from "../lib/CaseStore";
 
@@ -123,6 +124,7 @@ export default function MriAnalysis() {
   const [viewMode, setViewMode] = useState("side-by-side"); // "side-by-side" | "overlay"
   const [opacity, setOpacity] = useState(0.85);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [pendingFile, setPendingFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(mriResult?.previewUrl || null);
   const [fallbackHeatmap, setFallbackHeatmap] = useState(null);
 
@@ -134,27 +136,29 @@ export default function MriAnalysis() {
 
   function handleFileSelect(e) {
     const file = e.target.files?.[0];
-    if (file) processFile(file);
+    if (file) startProcessingFile(file);
   }
 
   async function handleLoadDemoScan() {
-    setLoading(true);
     try {
       const file = await createDemoMriBlob();
-      await processFile(file);
+      startProcessingFile(file);
     } catch (e) {
       console.error(e);
-    } finally {
-      setLoading(false);
     }
   }
 
-  async function processFile(file) {
+  function startProcessingFile(file) {
     const url = URL.createObjectURL(file);
     setSelectedFile(file);
     setPreviewUrl(url);
+    setPendingFile(file);
     setLoading(true);
+  }
 
+  async function executeMriAnalysis() {
+    const file = pendingFile || selectedFile;
+    const url = previewUrl || (file ? URL.createObjectURL(file) : null);
     try {
       const result = await api.mriPredict(file);
       const heatmap = result.heatmap_b64 || (await generateHeatmapOverlay(url));
@@ -181,13 +185,14 @@ export default function MriAnalysis() {
       setMriResult(mockResult);
     } finally {
       setLoading(false);
+      setPendingFile(null);
     }
   }
 
   function handleDrop(e) {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
+    if (file) startProcessingFile(file);
   }
 
   const hasResult = !!mriResult?.success && !loading;
@@ -200,6 +205,20 @@ export default function MriAnalysis() {
 
   return (
     <div>
+      {loading && (
+        <ModalLoadingOverlay
+          icon="brain"
+          title="Running Brain MRI Deep Learning Ensemble..."
+          steps={[
+            "Preprocessing CLAHE histogram normalization & brain registration...",
+            "Passing scan slices through ResNet-18 + EfficientNet-B0 backbone...",
+            "Computing Grad-CAM++ activation maps & anatomical region scoring...",
+            "Finalizing ASD pattern classification & confidence..."
+          ]}
+          durationMs={5500}
+          onComplete={executeMriAnalysis}
+        />
+      )}
       <SectionHeading
         eyebrow="STEP 2 OF 6 · MODALITY 1"
         title="MRI Brain Scan Analysis"

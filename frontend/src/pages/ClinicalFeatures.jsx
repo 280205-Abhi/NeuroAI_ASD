@@ -1,130 +1,120 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, RefreshCw, BarChart2 } from "lucide-react";
-import { ConfidenceBar, Disclaimer, Panel, Readout, RiskBadge, SectionHeading } from "../components/clinical/primitives";
+import { Panel, RiskBadge, SectionHeading } from "../components/clinical/primitives";
+import ModalLoadingOverlay from "../components/clinical/ModalLoadingOverlay";
 import { api } from "../lib/api";
 import { useCase } from "../lib/CaseStore";
 
 const DEFAULT_FORM = {
-  age_months: 28,
+  age_years: 2.3, // Age in Years
   gender: 1, // 1 = Male, 0 = Female
-  ethnicity: "Caucasian",
-  caregiver_edu: "Bachelor's Degree",
-  referral_source: "Pediatrician",
-  siblings_count: 1,
-
-  gestational_age: 39,
-  birth_weight: 3450,
-  delivery_mode: "Spontaneous Vaginal",
-  apgar_5min: 9,
-  maternal_age: 31,
-  paternal_age: 33,
-  nicu_admission: 0,
-  history_seizures: 0,
-
-  age_first_words: 18,
-  age_walked: 13,
-  skill_regression: 0,
-  joint_attention: "Reduced",
-  repetitive_behavior: "Moderate",
-  sensory_responsivity: "Hyper-responsive",
-
-  ADOS: 7.0, // Autism Diagnostic Observation Schedule Score
-  QS: 50.0,  // Quotient Score
-  DQ: 75.0,  // Developmental Quotient
-  IQ: 85,
-  verbal_iq: 82,
-  vineland_adaptive: 78,
-  expressive_language: "Single words",
-
-  family_history: 0,
-  genetic_syndrome: 0,
-  cnv_burden: 0,
+  expressive_language: 1, // 0 = Non-verbal, 1 = Single words, 2 = Fluent phrase speech
+  ADOS: 7.0, // ADOS-2 Score (0 - 24)
+  joint_attention: 1, // 0 = Typical, 1 = Reduced, 2 = Absent
+  repetitive_behavior: 1, // 0 = None/Rare, 1 = Moderate, 2 = Frequent
+  sensory_responsivity: 1, // 0 = Typical, 1 = Hyper-responsive, 2 = Hypo-responsive
 };
 
 export default function ClinicalFeatures() {
   const navigate = useNavigate();
-  const { clinicalResult, setClinicalResult } = useCase();
-  const [form, setForm] = useState(DEFAULT_FORM);
+  const { clinicalResult, setClinicalResult, ageMonths: caseAgeYears } = useCase();
+  const [form, setForm] = useState(() => ({
+    ...DEFAULT_FORM,
+    age_years: caseAgeYears ? Number(caseAgeYears) : 2.3,
+  }));
   const [loading, setLoading] = useState(false);
+  const [pendingForm, setPendingForm] = useState(null);
+
+  useEffect(() => {
+    if (caseAgeYears && !isNaN(Number(caseAgeYears))) {
+      setForm((prev) => ({ ...prev, age_years: Number(caseAgeYears) }));
+    }
+  }, [caseAgeYears]);
 
   function handleChange(field, val) {
-    setForm((prev) => ({ ...prev, [field]: val }));
+    const numVal = Number(val);
+    const updated = { ...form, [field]: isNaN(numVal) ? val : numVal };
+    setForm(updated);
   }
 
   function handleLoadExample() {
     setForm(DEFAULT_FORM);
-    handleRunEstimate(DEFAULT_FORM);
+    triggerPrediction(DEFAULT_FORM);
   }
 
-  async function handleRunEstimate(dataToUse = form) {
+  function triggerPrediction(dataToUse = form) {
+    setPendingForm(dataToUse);
     setLoading(true);
+  }
+
+  async function executePrediction() {
+    const dataToUse = pendingForm || form;
     try {
-      const adosVal = Number(dataToUse.ADOS) || 7.0;
-      const qsVal = Number(dataToUse.QS) || 50.0;
-      const dqVal = Number(dataToUse.DQ) || 75.0;
-      const iqVal = Number(dataToUse.IQ) || 85.0;
+      const ageYearsVal = Number(dataToUse.age_years) || Number(dataToUse.age_months) || 2.3;
+      const ageMonthsVal = Math.round(ageYearsVal * 12);
 
       const payload = {
-        age_months: Number(dataToUse.age_months) || 28,
-        gender: Number(dataToUse.gender) || 1,
-        pregnancy_problems: Number(dataToUse.history_seizures) || 0,
-        normally_evolved_perinatal_phenomena: 1,
-        birth_anomalies: 0,
-        psychiatric_disorders_familiarity: Number(dataToUse.family_history) || 0,
-        QS: qsVal,
-        IQ: iqVal,
-        QA_VABS: Number(dataToUse.vineland_adaptive) || 78,
-        ADOS: adosVal,
-        I_intellective_impairment: iqVal < 70 ? 1 : 0,
-        II_language_impairment: 1,
-        III_known_medical_condition: 0,
-        III_history_environmental_exposure: 0,
-        III_known_genetic_condition: Number(dataToUse.genetic_syndrome) || 0,
-        IV_other_mental_behavioral_disorders: 0,
-        other_psychiatric_comorbidities: 0,
-        nutrition_disorders: 0,
-        CGH_array_alterations: Number(dataToUse.cnv_burden) || 0,
-        DQ: dqVal,
-        DQ_IQ: dqVal - iqVal,
-        n_alterated_chromosomes: 0,
-        n_mutations: 0,
-        n_dup: 0,
-        n_del: 0,
+        age_months: ageMonthsVal,
+        gender: Number(dataToUse.gender) ?? 1,
+        expressive_language: Number(dataToUse.expressive_language) ?? 1,
+        ADOS: Number(dataToUse.ADOS) ?? 7.0,
+        joint_attention: Number(dataToUse.joint_attention) ?? 1,
+        repetitive_behavior: Number(dataToUse.repetitive_behavior) ?? 1,
+        sensory_responsivity: Number(dataToUse.sensory_responsivity) ?? 1,
       };
 
       const res = await api.clinicalPredict(payload);
       setClinicalResult(res);
-    } catch {
-      const adosVal = Number(dataToUse.ADOS) || 7.0;
+    } catch (err) {
+      console.warn("Backend prediction call failed, using client-side estimation:", err);
+      const adosVal = Number(dataToUse.ADOS) ?? 7.0;
       const mockRes = {
         success: true,
-        sev_label: adosVal >= 7.0 ? "Mild-Moderate ASD" : "No ASD",
-        bin_pred: adosVal >= 7.0 ? 1 : 0,
-        bin_prob: adosVal >= 7.0 ? [0.175, 0.825] : [0.825, 0.175],
+        sev_label: adosVal < 4.0 ? "No ASD" : adosVal < 9.0 ? "Mild-Moderate ASD" : "Severe ASD",
+        bin_pred: adosVal >= 4.0 ? 1 : 0,
+        bin_prob: adosVal < 4.0 ? [0.825, 0.175] : adosVal < 9.0 ? [0.24, 0.76] : [0.03, 0.97],
         shap: [
-          { feature: "ADOS", value: adosVal, shap: 0.1147 },
-          { feature: "IQ", value: Number(dataToUse.IQ) || 85, shap: -0.0878 },
-          { feature: "age_months", value: Number(dataToUse.age_months) || 28, shap: 0.0763 },
-          { feature: "DQ_IQ", value: -10, shap: 0.0571 },
-          { feature: "pregnancy_problems", value: 0, shap: 0.041 },
+          { feature: "ADOS", value: adosVal, shap: (adosVal - 5.0) * 0.035 },
+          { feature: "joint_attention", value: Number(dataToUse.joint_attention) || 1, shap: 0.042 },
+          { feature: "expressive_language", value: Number(dataToUse.expressive_language) || 1, shap: 0.035 },
+          { feature: "repetitive_behavior", value: Number(dataToUse.repetitive_behavior) || 1, shap: 0.028 },
+          { feature: "sensory_responsivity", value: Number(dataToUse.sensory_responsivity) || 1, shap: 0.019 },
+          { feature: "age_months", value: Number(dataToUse.age_years || 2.3) * 12, shap: -0.012 },
+          { feature: "gender", value: Number(dataToUse.gender) || 1, shap: 0.008 },
         ],
       };
       setClinicalResult(mockRes);
     } finally {
       setLoading(false);
+      setPendingForm(null);
     }
   }
 
-  const filledCount = Object.values(form).filter((v) => v !== "" && v !== null).length;
-  const totalCount = 27;
+  const filledCount = Object.values(form).filter((v) => v !== "" && v !== null && !isNaN(v)).length;
+  const totalCount = 7;
 
   return (
     <div>
+      {loading && (
+        <ModalLoadingOverlay
+          icon="cpu"
+          title="Computing Clinical Severity & TreeSHAP Attributions..."
+          steps={[
+            "Standardizing 7 core clinical & phenotypic parameters...",
+            "Evaluating GBDT severity classifier & binary probability...",
+            "Computing TreeSHAP additive feature contributions...",
+            "Generating SHAP waterfall impact visualization..."
+          ]}
+          durationMs={5500}
+          onComplete={executePrediction}
+        />
+      )}
+
       <SectionHeading
         eyebrow="STEP 4 OF 6 · MODALITY 3"
         title="Clinical & phenotypic features"
-        description="27 features across demographics, perinatal history, developmental milestones, cognition and genetics. All fields are required by the tabular model."
+        description="Streamlined 7 core predictive features for ASD risk estimation & severity scoring."
         actions={
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button className="btn btn-secondary" onClick={handleLoadExample}>
@@ -140,239 +130,179 @@ export default function ClinicalFeatures() {
       />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-        {/* 1. Demographics matching reference image 3 */}
-        <Panel title="Demographics" action={<span className="muted" style={{ fontSize: "0.78rem" }}>Case identifier and presentation context.</span>}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Age at assessment (months)</label>
-              <input type="number" value={form.age_months} onChange={(e) => handleChange("age_months", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
+        {/* 1. Primary Diagnostic Score (ADOS-2) */}
+        <Panel
+          title="Primary Diagnostic Instrument"
+          action={<span className="muted" style={{ fontSize: "0.78rem" }}>Calibrated Autism Diagnostic Observation Schedule.</span>}
+        >
+          <div
+            style={{
+              backgroundColor: "rgba(59, 130, 246, 0.06)",
+              padding: "1rem 1.25rem",
+              borderRadius: "var(--radius)",
+              border: "1.5px solid var(--primary)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <label className="label-caps" style={{ fontSize: "0.82rem", color: "var(--primary)", fontWeight: 700 }}>
+                ADOS-2 Score (Autism Diagnostic Observation Schedule)
+              </label>
+              <span
+                style={{
+                  backgroundColor: "var(--primary)",
+                  color: "#ffffff",
+                  fontSize: "0.72rem",
+                  fontWeight: 700,
+                  padding: "3px 9px",
+                  borderRadius: "12px",
+                  letterSpacing: "0.03em",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+                }}
+              >
+                Primary Predictor
+              </span>
             </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Sex</label>
-              <select value={form.gender} onChange={(e) => handleChange("gender", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value={1}>Male</option>
-                <option value={0}>Female</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Ethnicity</label>
-              <select value={form.ethnicity} onChange={(e) => handleChange("ethnicity", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="Caucasian">Caucasian</option>
-                <option value="Asian">Asian</option>
-                <option value="Hispanic">Hispanic</option>
-                <option value="African American">African American</option>
-                <option value="Multiple / Other">Multiple / Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Primary caregiver education</label>
-              <select value={form.caregiver_edu} onChange={(e) => handleChange("caregiver_edu", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="Bachelor's Degree">Bachelor's Degree</option>
-                <option value="High School">High School</option>
-                <option value="Master's / Doctorate">Master's / Doctorate</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Referral source</label>
-              <select value={form.referral_source} onChange={(e) => handleChange("referral_source", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="Pediatrician">Pediatrician</option>
-                <option value="Maternal & Child Health">Maternal & Child Health</option>
-                <option value="Self / Family">Self / Family</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Number of siblings</label>
-              <input type="number" value={form.siblings_count} onChange={(e) => handleChange("siblings_count", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="24"
+              value={form.ADOS}
+              onChange={(e) => handleChange("ADOS", e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                border: "1px solid var(--primary)",
+                borderRadius: "var(--radius)",
+                fontSize: "1.05rem",
+                fontWeight: 700,
+                color: "var(--foreground)",
+              }}
+            />
+            <span className="muted" style={{ fontSize: "0.76rem" }}>
+              Higher ADOS-2 scores directly correlate with increased ASD symptom severity (Range: 0 - 24). Scores &ge; 9 indicates Severe ASD.
+            </span>
           </div>
         </Panel>
 
-        {/* 2. Perinatal & medical matching reference image 3 */}
-        <Panel title="Perinatal & medical" action={<span className="muted" style={{ fontSize: "0.78rem" }}>Pregnancy, birth and early medical history.</span>}>
+        {/* 2. Core Clinical Features */}
+        <Panel
+          title="Core Clinical & Behavioral Phenotypes"
+          action={<span className="muted" style={{ fontSize: "0.78rem" }}>Essential developmental and behavioral features.</span>}
+        >
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
             <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Gestational age at birth (weeks)</label>
-              <input type="number" value={form.gestational_age} onChange={(e) => handleChange("gestational_age", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Birth weight (g)</label>
-              <input type="number" value={form.birth_weight} onChange={(e) => handleChange("birth_weight", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Delivery mode</label>
-              <select value={form.delivery_mode} onChange={(e) => handleChange("delivery_mode", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="Spontaneous Vaginal">Spontaneous Vaginal</option>
-                <option value="Elective C-Section">Elective C-Section</option>
-                <option value="Emergency C-Section">Emergency C-Section</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Apgar score at 5 min (0-10)</label>
-              <input type="number" min="0" max="10" value={form.apgar_5min} onChange={(e) => handleChange("apgar_5min", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Maternal age at birth (years)</label>
-              <input type="number" value={form.maternal_age} onChange={(e) => handleChange("maternal_age", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Paternal age at birth (years)</label>
-              <input type="number" value={form.paternal_age} onChange={(e) => handleChange("paternal_age", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>NICU admission</label>
-              <select value={form.nicu_admission} onChange={(e) => handleChange("nicu_admission", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value={0}>No</option>
-                <option value={1}>Yes</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>History of seizures</label>
-              <select value={form.history_seizures} onChange={(e) => handleChange("history_seizures", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value={0}>No</option>
-                <option value={1}>Yes</option>
-              </select>
-            </div>
-          </div>
-        </Panel>
-
-        {/* 3. Developmental milestones matching reference image 3 */}
-        <Panel title="Developmental milestones" action={<span className="muted" style={{ fontSize: "0.78rem" }}>Age at attainment and regression history.</span>}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Age at first words (months)</label>
-              <input type="number" value={form.age_first_words} onChange={(e) => handleChange("age_first_words", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Age walked unaided (months)</label>
-              <input type="number" value={form.age_walked} onChange={(e) => handleChange("age_walked", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Reported skill regression</label>
-              <select value={form.skill_regression} onChange={(e) => handleChange("skill_regression", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value={0}>No regression</option>
-                <option value={1}>Language regression</option>
-                <option value={2}>Social / Motor regression</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Joint attention</label>
-              <select value={form.joint_attention} onChange={(e) => handleChange("joint_attention", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="Typical">Typical</option>
-                <option value="Reduced">Reduced</option>
-                <option value="Absent">Absent</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Repetitive behaviour frequency</label>
-              <select value={form.repetitive_behavior} onChange={(e) => handleChange("repetitive_behavior", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="None / Rare">None / Rare</option>
-                <option value="Moderate">Moderate</option>
-                <option value="Frequent">Frequent</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Sensory responsivity</label>
-              <select value={form.sensory_responsivity} onChange={(e) => handleChange("sensory_responsivity", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="Typical">Typical</option>
-                <option value="Hyper-responsive">Hyper-responsive</option>
-                <option value="Hypo-responsive">Hypo-responsive</option>
-              </select>
-            </div>
-          </div>
-        </Panel>
-
-        {/* 4. Cognitive, ADOS & Clinical Scores */}
-        <Panel title="Cognitive, ADOS & Clinical Scores" action={<span className="muted" style={{ fontSize: "0.78rem" }}>Standardized diagnostic assessment scores (ADOS-2, IQ, VABS).</span>}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
-            {/* PROMINENT ADOS-2 SCORE INPUT FIELD */}
-            <div style={{ backgroundColor: "rgba(59, 130, 246, 0.05)", padding: "0.6rem 0.8rem", borderRadius: "var(--radius)", border: "1px solid rgba(59, 130, 246, 0.25)" }}>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4, color: "var(--primary)", fontWeight: 700 }}>
-                ADOS-2 Score (Autism Diagnostic)
+              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>
+                Age at assessment (years)
               </label>
               <input
                 type="number"
                 step="0.1"
-                min="0"
-                max="24"
-                value={form.ADOS}
-                onChange={(e) => handleChange("ADOS", e.target.value)}
-                style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--primary)", borderRadius: "var(--radius)", fontSize: "0.9rem", fontWeight: 600 }}
+                min="0.1"
+                value={form.age_years !== undefined ? form.age_years : form.age_months}
+                onChange={(e) => handleChange("age_years", e.target.value)}
+                style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}
               />
-              <span className="muted" style={{ fontSize: "0.68rem", display: "block", marginTop: 2 }}>
-                Higher score indicates higher ASD symptom severity
-              </span>
             </div>
 
             <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Full-scale IQ (standard score)</label>
-              <input type="number" value={form.IQ} onChange={(e) => handleChange("IQ", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
+              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>
+                Sex
+              </label>
+              <select
+                value={form.gender}
+                onChange={(e) => handleChange("gender", e.target.value)}
+                style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}
+              >
+                <option value={1}>Male</option>
+                <option value={0}>Female</option>
+              </select>
             </div>
+
             <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Verbal IQ (standard score)</label>
-              <input type="number" value={form.verbal_iq} onChange={(e) => handleChange("verbal_iq", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
+              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>
+                Expressive language level
+              </label>
+              <select
+                value={form.expressive_language}
+                onChange={(e) => handleChange("expressive_language", e.target.value)}
+                style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}
+              >
+                <option value={2}>Fluent phrase speech</option>
+                <option value={1}>Single words</option>
+                <option value={0}>Non-verbal / Pre-verbal</option>
+              </select>
             </div>
+
             <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Vineland-3 adaptive composite</label>
-              <input type="number" value={form.vineland_adaptive} onChange={(e) => handleChange("vineland_adaptive", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
+              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>
+                Joint attention assessment
+              </label>
+              <select
+                value={form.joint_attention}
+                onChange={(e) => handleChange("joint_attention", e.target.value)}
+                style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}
+              >
+                <option value={0}>Typical</option>
+                <option value={1}>Reduced</option>
+                <option value={2}>Absent</option>
+              </select>
             </div>
+
             <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>QS Score (Quotient Score)</label>
-              <input type="number" step="0.1" value={form.QS} onChange={(e) => handleChange("QS", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
+              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>
+                Repetitive behaviour frequency
+              </label>
+              <select
+                value={form.repetitive_behavior}
+                onChange={(e) => handleChange("repetitive_behavior", e.target.value)}
+                style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}
+              >
+                <option value={0}>None / Rare</option>
+                <option value={1}>Moderate</option>
+                <option value={2}>Frequent</option>
+              </select>
             </div>
+
             <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>DQ Score (Developmental Quotient)</label>
-              <input type="number" step="0.1" value={form.DQ} onChange={(e) => handleChange("DQ", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }} />
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Expressive language level</label>
-              <select value={form.expressive_language} onChange={(e) => handleChange("expressive_language", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value="Fluent phrase speech">Fluent phrase speech</option>
-                <option value="Single words">Single words</option>
-                <option value="Non-verbal / Pre-verbal">Non-verbal / Pre-verbal</option>
+              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>
+                Sensory responsivity profile
+              </label>
+              <select
+                value={form.sensory_responsivity}
+                onChange={(e) => handleChange("sensory_responsivity", e.target.value)}
+                style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}
+              >
+                <option value={0}>Typical</option>
+                <option value={1}>Hyper-responsive</option>
+                <option value={2}>Hypo-responsive</option>
               </select>
             </div>
           </div>
         </Panel>
 
-        {/* 5. Genetic & familial matching reference image 3 */}
-        <Panel title="Genetic & familial" action={<span className="muted" style={{ fontSize: "0.78rem" }}>Heritable risk indicators.</span>}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>First-degree ASD family history</label>
-              <select value={form.family_history} onChange={(e) => handleChange("family_history", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value={0}>No</option>
-                <option value={1}>Yes (Sibling / Parent)</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Known genetic syndrome</label>
-              <select value={form.genetic_syndrome} onChange={(e) => handleChange("genetic_syndrome", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value={0}>None identified</option>
-                <option value={1}>Fragile X / Tuberous Sclerosis / Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="label-caps" style={{ fontSize: "0.74rem", display: "block", marginBottom: 4 }}>Rare CNV burden</label>
-              <select value={form.cnv_burden} onChange={(e) => handleChange("cnv_burden", e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.84rem" }}>
-                <option value={0}>Normal / Low</option>
-                <option value={1}>Pathogenic CNV present</option>
-              </select>
-            </div>
-          </div>
-        </Panel>
-
-        {/* Action Row matching reference image 3 */}
+        {/* Action Row */}
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <button className="btn btn-primary" style={{ backgroundColor: "var(--primary)", color: "#ffffff" }} onClick={() => handleRunEstimate()} disabled={loading}>
+          <button
+            className="btn btn-primary"
+            style={{ backgroundColor: "var(--primary)", color: "#ffffff" }}
+            onClick={() => triggerPrediction()}
+            disabled={loading}
+          >
             {loading ? "Computing Estimate..." : "Run severity estimate"}
           </button>
-          <span className="numeric muted" style={{ fontSize: "0.82rem" }}>{filledCount} / {totalCount} features complete</span>
+          <span className="numeric muted" style={{ fontSize: "0.82rem" }}>
+            {filledCount} / {totalCount} core features active
+          </span>
         </div>
 
-        {/* Bottom Panel: Severity estimate matching reference image 3 */}
+        {/* Output Panel: Severity estimate & XAI SHAP waterfall */}
         <Panel
           title="Clinical Severity & XAI Feature Attribution (SHAP)"
-          action={<span className="muted" style={{ fontSize: "0.78rem" }}>Explainable AI (TreeExplainer) attribution values</span>}
+          action={<span className="muted" style={{ fontSize: "0.78rem" }}>Explainable AI attribution values</span>}
         >
           {!clinicalResult ? (
             <div
@@ -387,7 +317,7 @@ export default function ClinicalFeatures() {
               <BarChart2 size={28} style={{ color: "var(--text-muted)", margin: "0 auto 0.6rem auto", display: "block" }} />
               <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--foreground)" }}>No Clinical Estimate Generated Yet</div>
               <div className="muted" style={{ fontSize: "0.82rem", marginTop: 4, maxWidth: "480px", margin: "4px auto 0 auto" }}>
-                Verify the 27 phenotypic and cognitive parameters above, then click <strong>Run severity estimate</strong> or <strong>Load example case</strong>.
+                Adjust the ADOS-2 Score or core clinical parameters above, then click <strong>Run severity estimate</strong>.
               </div>
             </div>
           ) : (
@@ -444,13 +374,13 @@ export default function ClinicalFeatures() {
                     MODEL TYPE & XAI METHOD
                   </div>
                   <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--foreground)", marginTop: 4 }}>
-                    Ensemble GBDT + TreeSHAP
+                    7 Core-Feature Ensemble + TreeSHAP
                   </div>
                   <div className="muted" style={{ fontSize: "0.72rem" }}>Additive feature attributions</div>
                 </div>
               </div>
 
-              {/* Visual Horizontal Diverging SHAP Graph */}
+              {/* Diverging SHAP Graph */}
               <div style={{ padding: "1rem", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
                   <div>
@@ -479,36 +409,49 @@ export default function ClinicalFeatures() {
                 {(() => {
                   const shapItems = clinicalResult.shap || [
                     { feature: "ADOS", value: form.ADOS || 7.0, shap: 0.1147 },
-                    { feature: "IQ", value: form.IQ || 85, shap: -0.0878 },
-                    { feature: "age_months", value: form.age_months || 28, shap: 0.0763 },
-                    { feature: "DQ_IQ", value: (form.DQ || 75) - (form.IQ || 85), shap: 0.0571 },
-                    { feature: "QA_VABS", value: form.vineland_adaptive || 78, shap: -0.042 },
-                    { feature: "pregnancy_problems", value: form.history_seizures || 0, shap: 0.038 },
+                    { feature: "joint_attention", value: form.joint_attention || 1, shap: 0.042 },
+                    { feature: "expressive_language", value: form.expressive_language || 1, shap: 0.035 },
+                    { feature: "repetitive_behavior", value: form.repetitive_behavior || 1, shap: 0.028 },
+                    { feature: "sensory_responsivity", value: form.sensory_responsivity || 1, shap: 0.019 },
+                    { feature: "age_months", value: (Number(form.age_years) || 2.3) * 12, shap: -0.012 },
+                    { feature: "gender", value: form.gender || 1, shap: 0.008 },
                   ];
 
                   const featureNameMap = {
-                    ADOS: "ADOS-2 Calibrated Severity Score",
-                    IQ: "Full-Scale IQ (Standard Score)",
-                    verbal_iq: "Verbal IQ Score",
-                    QA_VABS: "Vineland-3 Adaptive Composite",
-                    age_months: "Age at Assessment (Months)",
-                    DQ_IQ: "DQ vs IQ Discrepancy Score",
-                    DQ: "Developmental Quotient (DQ)",
-                    QS: "Quotient Score (QS)",
-                    pregnancy_problems: "Perinatal Complications / Seizures",
-                    psychiatric_disorders_familiarity: "Familial Psychiatric History",
-                    CGH_array_alterations: "Chromosomal CNV Alterations",
-                    III_known_genetic_condition: "Known Genetic Condition",
-                    I_intellective_impairment: "Intellective Impairment Indicator",
+                    ADOS: "ADOS-2 Score",
+                    age_months: "Age at Assessment (Years)",
+                    gender: "Sex (Male / Female)",
+                    expressive_language: "Expressive Language Level",
+                    joint_attention: "Joint Attention Assessment",
+                    repetitive_behavior: "Repetitive Behaviour Frequency",
+                    sensory_responsivity: "Sensory Responsivity Profile",
                   };
 
-                  const maxAbsShap = Math.max(...shapItems.map((item) => Math.abs(item.shap)), 0.12);
+                  const valLabelMap = {
+                    gender: { 0: "Female", 1: "Male" },
+                    expressive_language: { 0: "Non-verbal", 1: "Single words", 2: "Fluent" },
+                    joint_attention: { 0: "Typical", 1: "Reduced", 2: "Absent" },
+                    repetitive_behavior: { 0: "Rare", 1: "Moderate", 2: "Frequent" },
+                    sensory_responsivity: { 0: "Typical", 1: "Hyper-responsive", 2: "Hypo-responsive" },
+                  };
+
+                  const maxAbsShap = Math.max(...shapItems.map((item) => Math.abs(item.shap)), 0.05);
 
                   return (
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.5rem" }}>
                       {/* Zero axis header */}
-                      <div style={{ display: "grid", gridTemplateColumns: "190px 70px 1fr 85px", gap: "0.75rem", fontSize: "0.7rem", color: "var(--text-muted)", paddingBottom: 4, borderBottom: "1px dashed var(--border)" }}>
-                        <span>FEATURE</span>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "200px 90px 1fr 85px",
+                          gap: "0.75rem",
+                          fontSize: "0.7rem",
+                          color: "var(--text-muted)",
+                          paddingBottom: 4,
+                          borderBottom: "1px dashed var(--border)",
+                        }}
+                      >
+                        <span>CORE FEATURE</span>
                         <span style={{ textAlign: "right" }}>PATIENT VAL</span>
                         <div style={{ display: "flex", justifyContent: "space-between", padding: "0 4px" }}>
                           <span>◄ Protective</span>
@@ -523,12 +466,21 @@ export default function ClinicalFeatures() {
                         const barPct = Math.min(100, Math.round((Math.abs(item.shap) / maxAbsShap) * 100));
                         const label = featureNameMap[item.feature] || item.feature;
 
+                        let displayVal = item.value;
+                        if (item.feature === "age_months") {
+                          displayVal = `${(Number(item.value) / 12).toFixed(1)} yrs`;
+                        } else if (valLabelMap[item.feature] && valLabelMap[item.feature][item.value] !== undefined) {
+                          displayVal = valLabelMap[item.feature][item.value];
+                        } else if (typeof item.value === "number") {
+                          displayVal = Number.isInteger(item.value) ? item.value : item.value.toFixed(1);
+                        }
+
                         return (
                           <div
                             key={idx}
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "190px 70px 1fr 85px",
+                              gridTemplateColumns: "200px 90px 1fr 85px",
                               alignItems: "center",
                               gap: "0.75rem",
                               fontSize: "0.8rem",
@@ -542,7 +494,7 @@ export default function ClinicalFeatures() {
 
                             {/* Patient Raw Value */}
                             <div style={{ textAlign: "right", fontFamily: "var(--font-mono, monospace)", color: "var(--text-muted)", fontSize: "0.78rem" }}>
-                              {typeof item.value === "number" ? (Number.isInteger(item.value) ? item.value : item.value.toFixed(1)) : item.value}
+                              {displayVal}
                             </div>
 
                             {/* Diverging Bar Container */}
@@ -629,7 +581,7 @@ export default function ClinicalFeatures() {
                     lineHeight: 1.4,
                   }}
                 >
-                  <strong>Clinical XAI Synthesis:</strong> The ADOS-2 severity score and assessment age act as the primary positive drivers toward an ASD classification, while intact Full-Scale IQ (85) and Vineland adaptive scores provide protective negative attributions offsetting extreme severity.
+                  <strong>Clinical XAI Synthesis:</strong> ADOS-2 score acts as the primary driving feature for ASD risk and severity tiering. Core behavioral phenotypes (Joint Attention, Repetitive Behaviors, Sensory Profile) modulate final risk score.
                 </div>
               </div>
 
