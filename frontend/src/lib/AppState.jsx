@@ -1,29 +1,5 @@
-import React, { createContext, useContext, useState } from "react";
+import { CaseProvider, useCase } from "./CaseStore";
 
-const Ctx = createContext(null);
-
-export function AppStateProvider({ children }) {
-  const [mriResult, setMriResult] = useState(null);
-  const [mriShapResult, setMriShapResult] = useState(null);
-  const [qResult, setQResult] = useState(null);
-  const [clinicalResult, setClinicalResult] = useState(null);
-  const [childName, setChildName] = useState("");
-  const [childAge, setChildAge] = useState(24);
-
-  const value = {
-    mriResult, setMriResult,
-    mriShapResult, setMriShapResult,
-    qResult, setQResult,
-    clinicalResult, setClinicalResult,
-    childName, setChildName,
-    childAge, setChildAge,
-  };
-
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
-}
-
-export function useAppState() {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useAppState must be used within AppStateProvider");
-  return ctx;
-}
+export const AppStateProvider = CaseProvider;
+export const useAppState = useCase;
+export { CaseProvider, useCase } from "./CaseStore";

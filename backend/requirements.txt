@@ -15,3 +15,9 @@ soundfile
 opencv-python-headless
 reportlab
 grad-cam
+python-dotenv
+pydantic
+openai
+chromadb
+tavily-python
+ddgs

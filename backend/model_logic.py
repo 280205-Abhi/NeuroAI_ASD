@@ -25,6 +25,23 @@ from torchvision.models import efficientnet_b0
 
 warnings.filterwarnings("ignore")
 
+# Limit PyTorch CPU thread count to prevent thread contention on Windows
+if hasattr(torch, "set_num_threads"):
+    try:
+        torch.set_num_threads(min(4, os.cpu_count() or 4))
+    except Exception:
+        pass
+
+
+@lru_cache(maxsize=32)
+def _get_tree_explainer_cached(model_id, model):
+    return shap.TreeExplainer(model)
+
+
+def get_cached_tree_explainer(model):
+    return _get_tree_explainer_cached(id(model), model)
+
+
 MODEL_DIR = Path(__file__).parent / "models"
 
 
@@ -195,7 +212,7 @@ def explain_mri_shap(image_input, resnet, device):
         inp = transform(original).unsqueeze(0).to(device)
 
         cam = GradCAMPlusPlus(model=resnet, target_layers=[resnet.layer4[-1]])
-        grayscale_cam = cam(input_tensor=inp)[0]
+        grayscale_cam = cam(input_tensor=inp, targets=None)[0]
         centered = grayscale_cam - 0.5
 
         fig, ax = plt.subplots(figsize=(4, 4), dpi=150)
@@ -246,7 +263,7 @@ def predict_mri(image_input, resnet, effnet, device):
         confidence = probs[0][pred_idx].item()
 
         cam = GradCAMPlusPlus(model=resnet, target_layers=[resnet.layer4[-1]])
-        grayscale_cam = cam(input_tensor=inp)[0]
+        grayscale_cam = cam(input_tensor=inp, targets=None)[0]
         rgb_img = np.array(orig_resized).astype(np.float32) / 255.0
         heatmap = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True, colormap=2)
         heatmap_img = Image.fromarray(heatmap)
@@ -307,7 +324,7 @@ def score_questionnaire(answers):
                 "rec": "Typical development indicators. Continue routine monitoring."}
     elif score <= 5:
         return {"score": score, "max": 10, "level": "Moderate Risk",
-                "rec": "Some ASD indicators present. Recommend formal evaluation within 1-3 months."}
+                "rec": "Administer M-CHAT-R/F Follow-Up interview items for failed questions to clarify risk tier before referral decisions."}
     return {"score": score, "max": 10, "level": "High Risk",
             "rec": "Multiple ASD indicators. Recommend immediate referral to developmental specialist."}
 
@@ -347,7 +364,7 @@ def run_clinical_shap(input_dict):
     sev_prob = sev_model.predict_proba(inp_sc)[0].tolist()
 
     try:
-        explainer = shap.TreeExplainer(bin_model)
+        explainer = get_cached_tree_explainer(bin_model)
         shap_vals = explainer.shap_values(inp_sc_df)
         vals = extract_shap_vals(shap_vals)
         shap_summary = sorted(
@@ -383,7 +400,7 @@ def run_ensemble_conflict(input_scaled, features):
     model_shaps, model_names = {}, []
     for name, est in estimators_list:
         try:
-            exp = shap.TreeExplainer(est)
+            exp = get_cached_tree_explainer(est)
             sv = exp.shap_values(inp_df)
             model_shaps[name] = extract_shap_vals(sv)
             model_names.append(name)

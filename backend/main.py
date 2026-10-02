@@ -13,9 +13,32 @@ from fastapi.responses import StreamingResponse
 from PIL import Image
 from pydantic import BaseModel
 
-import model_logic as ml
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-app = FastAPI(title="NeuroAI API")
+import model_logic as ml
+from rag.models import map_app_state_to_model_results, ModelResults
+from rag.builder import build_query
+from rag.corpus_retriever import CorpusRetriever
+from rag.live_searcher import live_search
+from rag.generator import generate_recommendations
+
+import asyncio
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def _warmup():
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, ml.load_clinical_models)
+        await loop.run_in_executor(None, ml.load_mri_ensemble)
+        await loop.run_in_executor(None, get_corpus_retriever)
+
+    asyncio.create_task(_warmup())
+    yield
+
+app = FastAPI(title="NeuroAI API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +50,14 @@ app.add_middleware(
 
 MODEL_DIR = Path(__file__).parent / "models"
 
+corpus_retriever_instance = None
+
+def get_corpus_retriever():
+    global corpus_retriever_instance
+    if corpus_retriever_instance is None:
+        corpus_retriever_instance = CorpusRetriever()
+    return corpus_retriever_instance
+
 
 # ── Status ───────────────────────────────────────────────────
 
@@ -34,23 +65,26 @@ MODEL_DIR = Path(__file__).parent / "models"
 def status():
     _, _, _, clinical_ok = ml.load_clinical_models()
     resnet, effnet, _, mri_ok = ml.load_mri_ensemble()
+    has_api_key = bool(os.environ.get("GROQ_API_KEY") or os.environ.get("OPENAI_API_KEY"))
     return {
         "clinical_ensemble": clinical_ok,
         "mri_resnet": mri_ok,
         "mri_effnet": mri_ok and effnet is not None,
         "xai_engine": True,
+        "rag_engine": True,
+        "llm_api_configured": has_api_key,
     }
 
 
 # ── MRI ──────────────────────────────────────────────────────
 
 @app.post("/api/mri/predict")
-async def mri_predict(file: UploadFile = File(...)):
+def mri_predict(file: UploadFile = File(...)):
     resnet, effnet, device, ok = ml.load_mri_ensemble()
     if not ok:
         raise HTTPException(503, "MRI model not loaded. Check backend/models/ folder.")
 
-    raw_bytes = await file.read()
+    raw_bytes = file.file.read()
     img = Image.open(io.BytesIO(raw_bytes))
 
     preprocessed = ml.preprocess_mri_image(img)
@@ -69,16 +103,17 @@ async def mri_predict(file: UploadFile = File(...)):
 
 
 @app.post("/api/mri/shap")
-async def mri_shap(file: UploadFile = File(...)):
+def mri_shap(file: UploadFile = File(...)):
     resnet, effnet, device, ok = ml.load_mri_ensemble()
     if not ok:
         raise HTTPException(503, "MRI model not loaded.")
-    raw_bytes = await file.read()
+    raw_bytes = file.file.read()
     img = Image.open(io.BytesIO(raw_bytes))
     result = ml.explain_mri_shap(img, resnet, device)
     if not result["success"]:
         raise HTTPException(500, result.get("error", "SHAP failed"))
     return {"success": True, "shap_img_b64": ml.pil_to_b64(result["shap_img"]), "method": result["method"]}
+
 
 
 # ── Screening ────────────────────────────────────────────────
@@ -180,6 +215,62 @@ def models_comparison():
     return {"clinical": clinical, "mri": mri}
 
 
+# ── RAG Decision Support ──────────────────────────────────────
+
+class RAGApiRequest(BaseModel):
+    mri_result: dict | None = None
+    clinical_result: dict | None = None
+    q_result: dict | None = None
+    use_live_search: bool = False
+
+
+@app.post("/api/rag/recommendations")
+def rag_recommendations(req: RAGApiRequest):
+    model_results = map_app_state_to_model_results(req.mri_result, req.clinical_result, req.q_result)
+    query = build_query(model_results)
+
+    retriever = get_corpus_retriever()
+    corpus_evidence = retriever.search(query, top_k=4)
+
+    live_evidence = []
+    if req.use_live_search:
+        live_evidence = live_search(query, max_results=4)
+
+    print(f"\n[RAG Pipeline Audit Log]")
+    print(f"  Query: '{query}'")
+    print(f"  Retrieved Corpus Evidence ({len(corpus_evidence)} passages):")
+    for idx, doc in enumerate(corpus_evidence, 1):
+        print(f"    [{idx}] Title: {doc.get('title')} | Publisher: {doc.get('publisher')} | Text: '{doc.get('text')[:90]}...'")
+    if live_evidence:
+        print(f"  Retrieved Live Web Evidence ({len(live_evidence)} passages):")
+        for idx, doc in enumerate(live_evidence, 1):
+            print(f"    [{idx}] Title: {doc.get('title')} | URL: {doc.get('url')} | Timestamp: {doc.get('retrieved_at')}")
+    print(f"  Conflict Flag: {model_results.conflict_flag} | Reason: {model_results.conflict_reason}\n")
+
+    api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    base_url = os.environ.get("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+
+    if not api_key:
+        raise HTTPException(400, "Missing GROQ_API_KEY or OPENAI_API_KEY in environment variables (.env).")
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    try:
+        rec_text = generate_recommendations(model_results, corpus_evidence, live_evidence, client)
+        return {
+            "success": True,
+            "query": query,
+            "recommendation_text": rec_text,
+            "corpus_evidence": corpus_evidence,
+            "live_evidence": live_evidence,
+            "live_search_used": len(live_evidence) > 0,
+            "model_results": model_results.model_dump() if hasattr(model_results, "model_dump") else model_results.dict(),
+        }
+    except Exception as e:
+        raise HTTPException(500, f"RAG recommendation generation failed: {str(e)}")
+
+
 # ── PDF report ───────────────────────────────────────────────
 
 class ReportRequest(BaseModel):
@@ -188,6 +279,7 @@ class ReportRequest(BaseModel):
     mri_result: dict | None = None
     q_result: dict | None = None
     clinical_result: dict | None = None
+    rag_result: dict | None = None
 
 
 @app.post("/api/report/generate")
@@ -199,9 +291,11 @@ def report_generate(req: ReportRequest):
         mri_result=req.mri_result,
         q_result=req.q_result,
         clinical_result=req.clinical_result,
+        rag_result=req.rag_result,
     )
     filename = f"NeuroAI_Report_{(req.patient_name or 'Patient').replace(' ', '_')}_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf"
     return StreamingResponse(
         pdf_buf, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+

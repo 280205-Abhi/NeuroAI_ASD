@@ -39,5 +39,5 @@ if not exist "venv" (
 echo ===================================================
 echo [*] Starting FastAPI Backend on http://localhost:8000
 echo ===================================================
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --reload-exclude "venv/*" --reload-exclude "chroma_db/*" --reload-exclude "models/*" --reload-exclude "__pycache__/*" --port 8000
 pause

@@ -18,12 +18,14 @@ pip-wheel-metadata/
 **/.ipynb_checkpoints/
 
 # Machine learning artifacts
+*.pkl
 *.pth
 *.pt
 *.onnx
 *.bin
 *.ckpt
 *.h5
+
 
 # Node / Vite
 node_modules/
@@ -37,6 +39,14 @@ build/
 .env.*
 !.env.example
 
+# Databases & Vector Stores
+chroma_db/
+**/chroma_db/
+*.sqlite3
+
+# Generated Reports & PDFs
+*.pdf
+
 # OS / editor files
 .DS_Store
 Thumbs.db
@@ -45,3 +55,4 @@ Thumbs.db
 
 # Logs
 *.log
+

@@ -50,7 +50,12 @@ export const api = {
       body: JSON.stringify({ input_scaled, features }),
     }).then(handle),
 
-  modelsComparison: () => fetch(`${BASE}/models/comparison`).then(handle),
+  ragRecommendations: (payload, useLiveSearch = false) =>
+    fetch(`${BASE}/rag/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, use_live_search: useLiveSearch }),
+    }).then(handle),
 
   reportGenerate: async (payload) => {
     const res = await fetch(`${BASE}/report/generate`, {

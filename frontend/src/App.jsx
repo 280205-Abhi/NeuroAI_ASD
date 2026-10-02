@@ -1,30 +1,32 @@
 import React from "react";
 import { Route, Routes } from "react-router-dom";
-import Sidebar from "./components/Sidebar";
-import { AppStateProvider } from "./lib/AppState";
-import Overview from "./pages/Overview";
+import AppShell from "./components/AppShell";
+import { CaseProvider } from "./lib/CaseStore";
+
+import CaseEntry from "./pages/CaseEntry";
 import MriAnalysis from "./pages/MriAnalysis";
 import Screening from "./pages/Screening";
-import XaiDeepDive from "./pages/XaiDeepDive";
-import ModelComparison from "./pages/ModelComparison";
+import ClinicalFeatures from "./pages/ClinicalFeatures";
+import FusedResults from "./pages/FusedResults";
 import Report from "./pages/Report";
+import ModelComparison from "./pages/ModelComparison";
 
 export default function App() {
   return (
-    <AppStateProvider>
-      <div className="app-shell">
-        <Sidebar />
-        <main className="app-main">
-          <Routes>
-            <Route path="/" element={<Overview />} />
-            <Route path="/mri" element={<MriAnalysis />} />
-            <Route path="/screening" element={<Screening />} />
-            <Route path="/xai" element={<XaiDeepDive />} />
-            <Route path="/comparison" element={<ModelComparison />} />
-            <Route path="/report" element={<Report />} />
-          </Routes>
-        </main>
-      </div>
-    </AppStateProvider>
+    <CaseProvider>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<CaseEntry />} />
+          <Route path="/mri" element={<MriAnalysis />} />
+          <Route path="/behavioral" element={<Screening />} />
+          <Route path="/screening" element={<Screening />} />
+          <Route path="/clinical" element={<ClinicalFeatures />} />
+          <Route path="/xai" element={<ClinicalFeatures />} />
+          <Route path="/results" element={<FusedResults />} />
+          <Route path="/report" element={<Report />} />
+          <Route path="/comparison" element={<ModelComparison />} />
+        </Routes>
+      </AppShell>
+    </CaseProvider>
   );
 }
