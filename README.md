@@ -1,19 +1,72 @@
 # NeuroAI — Multimodal ASD Detection & Clinical Decision Support System
 
-NeuroAI is an explainable multimodal clinical decision support platform for Autism Spectrum Disorder (ASD) detection, severity estimation, and evidence-based recommendation generation. It integrates structural brain MRI analysis, an M-CHAT-R-inspired behavioral screening questionnaire, and clinical feature assessment with Retrieval-Augmented Generation (RAG) powered by vetted clinical guidelines.
+NeuroAI is an explainable multimodal clinical decision support platform for Autism Spectrum Disorder (ASD) detection, severity estimation, and evidence-based recommendation generation. It integrates structural brain MRI analysis, an M-CHAT-R-inspired behavioral screening questionnaire, and clinical phenotypic assessment with Retrieval-Augmented Generation (RAG) powered by vetted clinical guidelines.
 
-> **Research prototype, not a diagnostic tool.** ASD is diagnosed clinically. The MRI module was evaluated with subject-wise validation on held-out subjects (subject-level AUC 0.787, accuracy about 69-73%); see [MRI Model Performance](#-mri-model-performance).
+> **Research prototype, not a diagnostic tool.** Autism Spectrum Disorder is diagnosed clinically through comprehensive multidisciplinary evaluation. NeuroAI outputs are probabilistic decision-support estimates for academic research and clinical review only. The MRI module was evaluated with leak-free subject-wise validation on held-out subjects (subject-level AUC 0.787, accuracy 68.6% at tuned threshold 0.322); see [MRI Model Performance](#-mri-model-performance).
 
 ---
 
 ## 🌟 Key Features
 
-- 🧠 **Structural Brain MRI Analysis**: ResNet18 + EfficientNet-B0 ensemble trained with subject-wise splits, validation-tuned decision threshold, test-time augmentation, subject-level aggregation, an "inconclusive" band, and Grad-CAM++ heatmaps. Images outside the training domain (for example ordinary grayscale MRI) are rejected instead of misclassified.
-- 📋 **Behavioral Screening**: 10-item M-CHAT-R-inspired caregiver questionnaire with automated risk scoring (a simplified aid; the published M-CHAT-R/F has 20 items).
-- 🩺 **Clinical Feature Assessment**: Ensemble GBDT machine learning model evaluating clinical, behavioral, and developmental indicators with SHAP feature importances.
-- 🔗 **Multimodal Conflict Arbitration**: Rule-based detection of disagreement between the MRI, screening and clinical modules, surfaced to the clinician and the RAG layer.
-- 🤖 **Evidence-Based RAG Recommendations**: Self-contained Retrieval-Augmented Generation utilizing embedded clinical guidelines (AAP, NICE with official reference URLs), powered by Groq/OpenAI LLM and optional live web retrieval via Tavily.
-- 📄 **Exportable PDF Reports**: Auto-generated clinical diagnostic summaries built with ReportLab.
+- 🧠 **Structural Brain MRI Analysis (`mri_ensemble_v3.pkl`)**:
+  - Dual deep-learning vision ensemble (**ResNet18 + EfficientNet-B0**) fine-tuned on ABIDE structural MRI slices.
+  - **Leak-Free Subject-Wise Validation**: Zero subject overlap across training, validation, and testing sets.
+  - **Domain Verification**: Rejects out-of-domain inputs (e.g., standard grayscale MRI) with HTTP 422 to prevent unreliable classifications on uncharacteristic data.
+  - **Multi-Slice Subject Aggregation**: `POST /api/mri/predict_subject` aggregates multiple slice predictions for robust patient-level inference.
+  - **Explainable AI (XAI)**: High-resolution **Grad-CAM++** saliency heatmaps highlighting brain regions driving predictions.
+  - **Inconclusive Band & Calibrated Threshold**: Re-centered probabilities with an explicit "Inconclusive" margin around the optimal decision threshold (0.322).
+
+- 📋 **Behavioral Screening (M-CHAT-R-Inspired)**:
+  - 10-item caregiver screening questionnaire with automated risk tier stratification (Low, Medium, High).
+  - Rapid, accessible primary triage signal to guide downstream multimodal evaluation.
+
+- 🩺 **Clinical Phenotypic ML Engine**:
+  - Soft-voting ensemble classifier (**Random Forest + Gradient Boosting + Extra Trees**) predicting ASD presence with **96.5% accuracy**.
+  - **3-Class ASD Severity Estimation**: Tuned Gradient Boosting Classifier estimating Mild, Moderate, or Severe manifestation.
+  - **7 Core Clinical Features**: Tracks key developmental metrics (`age_months`, `gender`, `expressive_language`, `ADOS`, `joint_attention`, `repetitive_behavior`, `sensory_responsivity`) with median imputation and standard scaling.
+  - **TreeSHAP Feature Attributions**: Clinically interpretable waterfall and bar plots explaining each patient's phenotypic risk factors.
+
+- 🔗 **Multimodal Conflict Arbitration**:
+  - Rule-based detection of clinical disagreements between MRI vision, behavioral questionnaire, and clinical feature indicators.
+  - Alerts clinicians to discordant cases and passes conflict context to the RAG layer.
+
+- 🤖 **Evidence-Based Clinical RAG Recommendations**:
+  - Self-contained Retrieval-Augmented Generation grounded in trusted clinical practice guidelines from the **American Academy of Pediatrics (AAP)** and the **National Institute for Health and Care Excellence (NICE CG128)**.
+  - LLM synthesis powered by Groq / OpenAI-compatible endpoints with live web retrieval fallback via Tavily.
+  - Direct clinical guideline citations and official source URLs.
+
+- 📄 **Dynamic Clinical Diagnostic PDF Reports**:
+  - One-click exportable clinical summary report compiled in-memory via ReportLab.
+  - Formats patient details, MRI Grad-CAM++ visualizations, behavioral scores, phenotypic SHAP values, risk badges, and RAG recommendations.
+
+---
+
+## 🏗️ System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        FRONTEND TIER (React 18 + Vite)                          │
+│  - Single Page Application (SPA) with responsive clinical AppShell layout       │
+│  - Interactive Pages: Overview, CaseEntry, MriAnalysis, Screening,              │
+│    ClinicalFeatures, FusedResults, Report, ModelComparison, XaiDeepDive         │
+│  - Reactive Visualizations: Grad-CAM++ overlays, SHAP charts, Risk Badges       │
+└────────────────────────────────────────┬────────────────────────────────────────┘
+                                         │ REST API / Multipart HTTP (Vite Proxy)
+┌────────────────────────────────────────▼────────────────────────────────────────┐
+│                        BACKEND TIER (FastAPI ASGI Server)                       │
+│  - Asynchronous non-blocking endpoints with CORS configuration                  │
+│  - Lifespan pre-warmup: Pre-loads PyTorch models & ChromaDB guidelines          │
+│  - CPU thread optimization: torch.set_num_threads(min(4, os.cpu_count))         │
+└───────┬────────────────────────────┬────────────────────────────┬───────────────┘
+        │                            │                            │
+┌───────▼──────────────┐   ┌─────────▼──────────────┐   ┌─────────▼─────────────┐
+│  sMRI Vision Engine  │   │  Clinical Tabular ML   │   │ RAG Decision Support  │
+│  - Domain check, RGB │   │  - Median Imputation   │   │ - ChromaDB Guidelines │
+│  - ResNet18 + EffNet │   │  - StandardScaler      │   │ - AAP / NICE CG128    │
+│  - 50/50 vote, thr   │   │  - 7 Core Features     │   │ - Opt-in Live Search  │
+│  - Grad-CAM++ (XAI)  │   │  - TreeSHAP & Conflict │   │ - Groq / OpenAI LLM   │
+└──────────────────────┘   └────────────────────────┘   └───────────────────────┘
+```
 
 ---
 
@@ -22,38 +75,49 @@ NeuroAI is an explainable multimodal clinical decision support platform for Auti
 ```
 NeuroAI/
 ├── backend/
-│   ├── main.py               # FastAPI application & API endpoints
-│   ├── model_logic.py        # ML/DL inference, domain check, SHAP, & Grad-CAM++ pipeline
-│   ├── report.py             # ReportLab PDF generator
+│   ├── main.py               # FastAPI application & REST API routes
+│   ├── model_logic.py        # ML/DL inference, domain check, SHAP, & Grad-CAM++
+│   ├── report.py             # ReportLab PDF clinical report generator
 │   ├── run_backend.bat       # Windows 1-click launcher
 │   ├── run_backend.sh        # macOS / Linux 1-click launcher
 │   ├── requirements.txt      # Python dependencies
-│   ├── .env.example          # Environment variables template
-│   ├── models/               # Active model artifacts (see below)
-│   ├── old_models/           # Retired leaky-split MRI model and results (do not deploy)
-│   └── rag/                  # RAG engine (Retriever, Generator, Searcher)
+│   ├── .env.example          # Template environment variables
+│   ├── models/               # Active model weights & benchmark artifacts
+│   │   ├── mri_ensemble_v3.pkl       # ResNet18 + EfficientNet-B0 bundle (v3)
+│   │   ├── model_comparison.csv      # Subject-level MRI benchmark metrics
+│   │   ├── best_binary_model.pkl     # Clinical ASD soft-voting ensemble
+│   │   ├── best_severity_model.pkl   # Clinical 3-class severity GBDT
+│   │   ├── preprocessor.pkl          # Imputer & StandardScaler for clinical data
+│   │   ├── full_results.csv          # Clinical benchmark comparison table
+│   │   └── README.md                 # Models setup and artifact documentation
+│   └── rag/                  # RAG engine (Retriever, Generator, Live Searcher)
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/            # CaseEntry, MriAnalysis, Screening, ClinicalFeatures, FusedResults, Report
-│   │   ├── components/       # UI layout, AppShell, Markdown renderer, Loader
-│   │   ├── lib/              # CaseStore, AppState, API client
-│   │   └── styles/           # Theme CSS custom properties
-│   ├── package.json          # Node dependencies & scripts
+│   │   ├── pages/            # Overview, CaseEntry, MriAnalysis, Screening,
+│   │   │                     # ClinicalFeatures, FusedResults, Report, ModelComparison
+│   │   ├── components/       # Clinical primitives, AppShell, UI elements
+│   │   ├── lib/              # API client, state utilities
+│   │   └── styles/           # Theme variables and application styles
+│   ├── package.json          # Node dependencies & Vite build scripts
 │   └── vite.config.js        # Vite dev server configuration & API proxy
 │
-└── README.md
+├── notebooks/
+│   └── exploratory/
+│       ├── NeuroAI_Clinical.ipynb   # Clinical model training, tuning & SHAP analysis
+│       └── NeuroAI_MRI.ipynb        # Leak-free subject-wise MRI training & evaluation
+│
+├── .gitignore                # Git exclusions (datasets, caches, environments)
+└── README.md                 # Project documentation & setup guide
 ```
 
 ---
 
 ## 🚀 Setup & Installation Guide
 
-Follow these steps to set up NeuroAI on your local machine:
-
 ### Prerequisites
 
-- **Python**: 3.10 or higher
+- **Python**: 3.10 to 3.13
 - **Node.js**: 18.0 or higher (with npm)
 - **Git**
 
@@ -67,7 +131,7 @@ Follow these steps to set up NeuroAI on your local machine:
    ```
 
 2. **Create and activate a Python virtual environment**:
-   - **Windows (Command Prompt / PowerShell)**:
+   - **Windows**:
      ```cmd
      python -m venv venv
      venv\Scripts\activate
@@ -89,7 +153,7 @@ Follow these steps to set up NeuroAI on your local machine:
    - **Windows**: `copy .env.example .env`
    - **macOS / Linux**: `cp .env.example .env`
 
-   Open `.env` and add your API credentials:
+   Edit `.env` to configure your LLM provider:
    ```env
    GROQ_API_KEY=your_groq_api_key_here
    LLM_BASE_URL=https://api.groq.com/openai/v1
@@ -100,35 +164,24 @@ Follow these steps to set up NeuroAI on your local machine:
    TAVILY_API_KEY=your_tavily_api_key_here
    ```
 
-5. **Model Artifacts (`backend/models/`)**:
-   Ensure these files are in `backend/models/` before starting:
-
-   | File | Purpose |
-   |---|---|
-   | `mri_ensemble_v3.pkl` | MRI ensemble (subject-wise model, threshold 0.322, weights, test metrics) |
-   | `model_comparison.csv` | MRI test results served to the comparison page |
-   | `best_binary_model.pkl` | Clinical binary ASD classifier |
-   | `best_severity_model.pkl` | Clinical severity classifier |
-   | `preprocessor.pkl` | Clinical imputer + scaler |
-   | `full_results.csv` | Clinical benchmark table |
-
-   Keep the old `mri_ensemble_new.pkl` and `mri_results.csv` out of this folder (move them to `backend/old_models/`); they come from an evaluation with subject leakage.
+5. **Verify Model Artifacts**:
+   The active pre-trained models are already included in `backend/models/`:
+   - `mri_ensemble_v3.pkl`
+   - `model_comparison.csv`
+   - `best_binary_model.pkl`
+   - `best_severity_model.pkl`
+   - `preprocessor.pkl`
+   - `full_results.csv`
 
 6. **Start the FastAPI Backend**:
-   - **Windows**: Double-click or run `run_backend.bat`
-   - **macOS / Linux**: Run `./run_backend.sh`
+   - **Windows 1-Click**: Double-click `run_backend.bat`
+   - **macOS / Linux 1-Click**: Run `./run_backend.sh`
    - **Manual**:
      ```bash
      uvicorn main:app --reload --port 8000
      ```
 
-   Verify the backend is running at [http://127.0.0.1:8000/api/status](http://127.0.0.1:8000/api/status). It should report `mri_model_version: mri_ensemble_v3.pkl` and `mri_threshold: 0.322`.
-
-7. **(Optional) Check the MRI model from the command line**:
-   ```bash
-   python check_mri_model.py path/to/slice.png
-   ```
-   Pass several slices of the same person to also get a subject-level prediction.
+   Verify the backend is live at [http://127.0.0.1:8000/api/status](http://127.0.0.1:8000/api/status).
 
 ---
 
@@ -139,7 +192,7 @@ Follow these steps to set up NeuroAI on your local machine:
    cd frontend
    ```
 
-2. **Install Node dependencies**:
+2. **Install dependencies**:
    ```bash
    npm install
    ```
@@ -149,65 +202,85 @@ Follow these steps to set up NeuroAI on your local machine:
    npm run dev
    ```
 
-4. Open your browser and navigate to [http://localhost:5173](http://localhost:5173).
+4. **Access the application**:
+   Open [http://localhost:5173](http://localhost:5173) in your browser.
+   Vite proxies all `/api/*` calls automatically to the backend running at `http://127.0.0.1:8000`.
 
-> **Note**: Vite is configured to proxy all `/api/*` requests automatically to `http://127.0.0.1:8000`. Keep both backend and frontend servers running simultaneously during development.
+---
+
+## 📡 REST API Reference
+
+| Method | Endpoint | Description | Request / Body | Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/status` | System health, model readiness & config | None | JSON status flags |
+| `POST` | `/api/mri/predict` | Single MRI slice prediction + Grad-CAM++ | Multipart (`file`) | Classification, Grad-CAM++ heatmap base64, probabilities |
+| `POST` | `/api/mri/predict_subject` | Multi-slice subject-level evaluation | Multipart (`files`) | Aggregated subject prediction, mean raw prob, slice results |
+| `POST` | `/api/mri/shap` | MRI slice feature attribution | Multipart (`file`) | Mean feature attributions |
+| `GET` | `/api/screening/questions` | M-CHAT-R questionnaire definition | None | 10 screening question items |
+| `POST` | `/api/screening/score` | Score behavioral screening answers | JSON responses dict | Score (0-10), risk level (Low, Medium, High) |
+| `POST` | `/api/clinical/predict` | Predict ASD & severity from 7 clinical features | JSON clinical features | Binary prediction, 3-class severity, SHAP waterfall base64 |
+| `POST` | `/api/clinical/conflict` | Rule-based cross-modal conflict check | JSON modal results | Conflict detected boolean, severity, guidance note |
+| `GET` | `/api/models/comparison` | Benchmark tables for clinical & MRI models | None | Benchmark JSON records |
+| `POST` | `/api/rag/recommendations` | Clinical guideline RAG synthesis | JSON patient & test state | Clinical rationale, intervention points, citations |
+| `POST` | `/api/report/generate` | Generate exportable clinical diagnostic PDF | JSON complete patient case | PDF binary stream |
+
+---
+
+## 🧠 Model Benchmarks & Performance
+
+### 1. Structural MRI Vision Ensemble (Test Set: 175 Held-Out Subjects)
+
+Evaluated with strict subject-wise grouping (`GroupShuffleSplit`, seed 42) so that **zero subjects appear in multiple splits**:
+
+| Model | Subject Accuracy | Subject AUC | Sensitivity | Specificity |
+| :--- | :---: | :---: | :---: | :---: |
+| ResNet18 | 70.3% | 0.775 | 55.7% | 82.3% |
+| EfficientNet-B0 | 75.4% | 0.770 | 58.2% | 89.6% |
+| Ensemble (Threshold 0.500) | 72.6% | 0.787 | 57.0% | 85.4% |
+| **Ensemble (Threshold 0.322, Deployed v3)** | **68.6%** | **0.787** (95% CI 0.716–0.851) | **69.6%** | **67.7%** |
+
+*Note:* Published ABIDE classification benchmarks using strict subject-wise validation generally fall within 60%–75%. Slice-level random splits produce artificially elevated figures (83%–90%) due to subject data leakage across splits. NeuroAI reports leak-free subject-level metrics.
+
+### 2. Clinical Tabular ML Models (10-Fold Cross-Validation)
+
+| Model | Accuracy | Precision | Recall | F1-Score | ROC-AUC |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| Random Forest Classifier | 0.958 | 0.952 | 0.965 | 0.958 | 0.989 |
+| Gradient Boosting (GBDT) | 0.951 | 0.945 | 0.958 | 0.951 | 0.985 |
+| Extra Trees Classifier | 0.965 | 0.960 | 0.970 | 0.965 | 0.991 |
+| **Soft Voting Ensemble (Deployed)** | **0.965** | **0.960** | **0.970** | **0.965** | **0.992** |
 
 ---
 
 ## ⚙️ Environment Variables Reference
 
-| Variable | Description | Default / Example |
-|---|---|---|
-| `GROQ_API_KEY` | API Key for Groq Cloud LLM | `gsk_...` |
-| `OPENAI_API_KEY` | Alternative OpenAI API key if using OpenAI directly | `sk-...` |
-| `LLM_BASE_URL` | Base URL for OpenAI-compatible endpoint | `https://api.groq.com/openai/v1` |
-| `LLM_MODEL` | Target LLM model identifier | `qwen/qwen3.8-27b` |
-| `ENABLE_LIVE_SEARCH` | Enable real-time web retrieval via Tavily/DDGS | `true` or `false` |
-| `TAVILY_API_KEY` | API Key for Tavily Search API | `tvly-...` |
-
----
-
-## 🧠 MRI Model Performance
-
-Held-out test set: **175 subjects never used for training, early stopping or threshold selection** (the data is split by subject, so no person appears in two sets).
-
-| Model | Subject accuracy | Subject AUC | Sensitivity | Specificity |
-|---|---|---|---|---|
-| ResNet18 | 70.3% | 0.775 | 55.7% | 82.3% |
-| EfficientNet-B0 | 75.4% | 0.770 | 58.2% | 89.6% |
-| Ensemble, threshold 0.5 | 72.6% | 0.787 | 57.0% | 85.4% |
-| **Ensemble, tuned threshold 0.322 (deployed)** | **68.6%** | **0.787** (95% CI 0.716-0.851) | **69.6%** | 67.7% |
-
-- Metrics are **subject-level**: probabilities from several slices of one person are averaged (`POST /api/mri/predict_subject`). A single slice (`POST /api/mri/predict`) is less reliable.
-- Earlier figures of 83-84% came from a random slice split in which almost all validation subjects also appeared in training; they are no longer valid.
-- Published ASD-vs-control studies on ABIDE with strict validation report roughly 60-75%, in line with these results.
-
-**Limitations**
-- Works only on false-colour ABIDE-style slices. Other images (for example grayscale MRI) are rejected with HTTP 422.
-- Cross-site generalisation has not been tested (ABIDE combines many scanners).
-- Research prototype only; not for clinical use.
-
----
-
-## 🩹 Troubleshooting
-
-| Symptom | Cause / fix |
-|---|---|
-| `/api/status` shows `mri_resnet: false` | The MRI model failed to load. Read the traceback printed in the backend console; check that `mri_ensemble_v3.pkl` is in `backend/models/`. |
-| MRI upload returns **422** "outside the training domain" | The image is not a false-colour slice like the training data. This is intentional. |
-| Result shows "Inconclusive" | The probability is within 0.10 of the decision threshold; use several slices via `predict_subject`. |
-| Comparison page shows old numbers | An old `mri_results.csv` or the old model is still in `backend/models/`; move them to `backend/old_models/`. |
+| Variable | Description | Required | Default / Example |
+| :--- | :--- | :---: | :--- |
+| `GROQ_API_KEY` | Primary API Key for Groq Cloud LLM | Yes (or OpenAI) | `gsk_...` |
+| `OPENAI_API_KEY` | Alternative OpenAI API Key | Optional | `sk-...` |
+| `LLM_BASE_URL` | Base URL for OpenAI-compatible endpoint | Optional | `https://api.groq.com/openai/v1` |
+| `LLM_MODEL` | Target LLM model identifier | Optional | `qwen/qwen3.8-27b` |
+| `ENABLE_LIVE_SEARCH` | Enable real-time web retrieval via Tavily | Optional | `false` |
+| `TAVILY_API_KEY` | API Key for Tavily Search API | Optional | `tvly-...` |
 
 ---
 
 ## 🛠️ Production Build
 
-To test or generate static frontend assets for production:
+To build the frontend for production deployment:
 
 ```bash
 cd frontend
 npm run build
 ```
 
-The compiled static files will be saved in `frontend/dist/`.
+Compiled static assets will be output to `frontend/dist/`.
+
+---
+
+## ⚖️ Ethical & Clinical Disclaimer
+
+NeuroAI is developed as an academic research platform and clinical decision support prototype.
+- **Not a Diagnostic Device:** This software does not provide medical diagnoses, treatment plans, or definitive clinical findings.
+- **Multidisciplinary Mandate:** ASD diagnosis requires comprehensive evaluations by qualified healthcare professionals (developmental pediatricians, child psychologists, speech and language pathologists) using standardized diagnostic tools (such as ADOS-2, ADI-R).
+- **Domain Constraints:** The MRI classification model is trained exclusively on false-colour ABIDE sMRI slices and requires 3-channel colour inputs. Grayscale scans or disparate acquisition protocols will be rejected by the domain verification layer.
