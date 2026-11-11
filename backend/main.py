@@ -65,9 +65,32 @@ def root():
         "service": "NeuroAI API",
         "version": "1.0.0",
         "endpoints": {
+            "api_root": "/api",
             "status": "/api/status",
             "docs": "/docs",
             "models_comparison": "/api/models/comparison",
+        },
+    }
+
+
+@app.get("/api")
+def api_root():
+    return {
+        "status": "online",
+        "service": "NeuroAI API",
+        "message": "API root prefix. Specific available endpoints are listed below.",
+        "endpoints": {
+            "status": "/api/status",
+            "screening_questions": "/api/screening/questions",
+            "screening_score": "/api/screening/score",
+            "clinical_predict": "/api/clinical/predict",
+            "clinical_conflict": "/api/clinical/conflict",
+            "mri_predict": "/api/mri/predict",
+            "mri_predict_subject": "/api/mri/predict_subject",
+            "models_comparison": "/api/models/comparison",
+            "rag_recommendations": "/api/rag/recommendations",
+            "report_generate": "/api/report/generate",
+            "docs": "/docs",
         },
     }
 
@@ -94,12 +117,14 @@ def status():
 # ── MRI ──────────────────────────────────────────────────────
 
 @app.post("/api/mri/predict")
-def mri_predict(file: UploadFile = File(...)):
+async def mri_predict(file: UploadFile = File(...)):
+    print(f"[MRI] Received prediction request for: {file.filename}")
     resnet, effnet, device, ok = ml.load_mri_ensemble()
     if not ok:
         raise HTTPException(503, "MRI model not loaded. Check backend/models/ folder.")
 
-    raw_bytes = file.file.read()
+    raw_bytes = await file.read()
+    print(f"[MRI] Read {len(raw_bytes)} bytes. Opening image...")
     img = Image.open(io.BytesIO(raw_bytes))
 
     if ml.is_grayscale_image(img):
@@ -122,11 +147,12 @@ def mri_predict(file: UploadFile = File(...)):
     result["risk_badge_class"] = badge_class
     result["preprocessed_b64"] = ml.pil_to_b64(preprocessed.resize((224, 224)))
     result["domain_warnings"] = domain_warnings
+    print(f"[MRI] Finished prediction: {result.get('prediction')} ({result.get('confidence'):.2f})")
     return result
 
 
 @app.post("/api/mri/predict_subject")
-def mri_predict_subject(files: list[UploadFile] = File(...)):
+async def mri_predict_subject(files: list[UploadFile] = File(...)):
     resnet, effnet, device, ok = ml.load_mri_ensemble()
     if not ok:
         raise HTTPException(503, "MRI model not loaded. Check backend/models/ folder.")
@@ -136,7 +162,7 @@ def mri_predict_subject(files: list[UploadFile] = File(...)):
 
     pil_images = []
     for f in files:
-        raw_bytes = f.file.read()
+        raw_bytes = await f.read()
         img = Image.open(io.BytesIO(raw_bytes))
         if ml.is_grayscale_image(img):
             raise HTTPException(
@@ -153,11 +179,11 @@ def mri_predict_subject(files: list[UploadFile] = File(...)):
 
 
 @app.post("/api/mri/shap")
-def mri_shap(file: UploadFile = File(...)):
+async def mri_shap(file: UploadFile = File(...)):
     resnet, effnet, device, ok = ml.load_mri_ensemble()
     if not ok:
         raise HTTPException(503, "MRI model not loaded.")
-    raw_bytes = file.file.read()
+    raw_bytes = await file.read()
     img = Image.open(io.BytesIO(raw_bytes))
     result = ml.explain_mri_shap(img, resnet, device)
     if not result["success"]:

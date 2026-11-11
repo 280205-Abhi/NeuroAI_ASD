@@ -333,19 +333,19 @@ def predict_mri(image_input, resnet, effnet, device):
         heatmap_b64 = None
         try:
             from pytorch_grad_cam import GradCAM
-            cam = GradCAM(model=resnet, target_layers=[resnet.layer4[-1]])
-            grayscale_cam = cam(input_tensor=inp, targets=None)[0]
-            rgb_img = np.array(orig_resized).astype(np.float32) / 255.0
-            
-            # Colormap blending in pure matplotlib & numpy (no cv2 required)
-            import matplotlib.pyplot as plt
-            cmap = plt.get_cmap("jet")
-            colored_mask = cmap(grayscale_cam)[:, :, :3]
-            blended = 0.5 * rgb_img + 0.5 * colored_mask
-            blended = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
-            heatmap_img = Image.fromarray(blended)
-            heatmap_b64 = pil_to_b64(heatmap_img)
-            del cam, grayscale_cam, colored_mask, blended
+            with GradCAM(model=resnet, target_layers=[resnet.layer4[-1]]) as cam:
+                grayscale_cam = cam(input_tensor=inp, targets=None)[0]
+                rgb_img = np.array(orig_resized).astype(np.float32) / 255.0
+                
+                # Colormap blending in pure matplotlib & numpy (no cv2 required)
+                import matplotlib.pyplot as plt
+                cmap = plt.get_cmap("jet")
+                colored_mask = cmap(grayscale_cam)[:, :, :3]
+                blended = 0.5 * rgb_img + 0.5 * colored_mask
+                blended = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
+                heatmap_img = Image.fromarray(blended)
+                heatmap_b64 = pil_to_b64(heatmap_img)
+                del grayscale_cam, colored_mask, blended
         except Exception as cam_err:
             print(f"[GradCAM] Attribution warning: {cam_err}")
             heatmap_b64 = None
