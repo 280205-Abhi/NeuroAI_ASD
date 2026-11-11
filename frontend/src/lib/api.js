@@ -1,6 +1,17 @@
 
-const RAW_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "/api";
-const BASE = RAW_BASE.replace(/\/$/, "");
+const rawEnv =
+  import.meta.env.VITE_API_BASE ||
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "";
+
+const cleanEnv = rawEnv.trim().replace(/\/$/, "");
+
+// If an env var is set (e.g. https://neuroai-backend-pzpi.onrender.com),
+// ensure it targets the FastAPI /api prefix. If unset, fallback to relative "/api".
+export const BASE = cleanEnv
+  ? (cleanEnv.endsWith("/api") ? cleanEnv : `${cleanEnv}/api`)
+  : "/api";
 
 async function handle(res) {
   if (!res.ok) {
