@@ -1,17 +1,35 @@
 
-const rawEnv =
-  import.meta.env.VITE_API_BASE ||
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "";
+// Determine the backend API URL:
+// 1. Check build-time Vite environment variables (VITE_API_BASE, VITE_API_URL, etc.)
+// 2. If running in a browser on *.onrender.com and no env var was baked in,
+//    automatically route to the known Render backend deployment.
+// 3. Otherwise fallback to local relative "/api" (proxied to localhost:8000 in dev).
 
-const cleanEnv = rawEnv.trim().replace(/\/$/, "");
+const FALLBACK_RENDER_BACKEND = "https://neuroai-backend-pzpi.onrender.com";
 
-// If an env var is set (e.g. https://neuroai-backend-pzpi.onrender.com),
-// ensure it targets the FastAPI /api prefix. If unset, fallback to relative "/api".
-export const BASE = cleanEnv
-  ? (cleanEnv.endsWith("/api") ? cleanEnv : `${cleanEnv}/api`)
-  : "/api";
+function resolveApiBase() {
+  const envVal = (
+    import.meta.env.VITE_API_BASE ||
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_API_BASE_URL ||
+    ""
+  ).trim().replace(/\/$/, "");
+
+  if (envVal) {
+    return envVal.endsWith("/api") ? envVal : `${envVal}/api`;
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host.includes("onrender.com") && !host.includes("neuroai-backend")) {
+      return `${FALLBACK_RENDER_BACKEND}/api`;
+    }
+  }
+
+  return "/api";
+}
+
+export const BASE = resolveApiBase();
 
 if (typeof window !== "undefined") {
   console.log("[NeuroAI] Active API Base URL:", BASE);
