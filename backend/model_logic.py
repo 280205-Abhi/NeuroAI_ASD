@@ -127,8 +127,11 @@ def load_mri_ensemble():
 
         for p in paths:
             if p.exists():
-                with open(p, "rb") as f:
-                    bundle = CPU_Unpickler(f).load()
+                try:
+                    bundle = torch.load(p, map_location="cpu", weights_only=False)
+                except Exception:
+                    with open(p, "rb") as f:
+                        bundle = CPU_Unpickler(f).load()
                 chosen_path = p
                 break
 
