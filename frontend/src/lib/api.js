@@ -13,6 +13,10 @@ export const BASE = cleanEnv
   ? (cleanEnv.endsWith("/api") ? cleanEnv : `${cleanEnv}/api`)
   : "/api";
 
+if (typeof window !== "undefined") {
+  console.log("[NeuroAI] Active API Base URL:", BASE);
+}
+
 async function handle(res) {
   if (!res.ok) {
     let detail = res.statusText;

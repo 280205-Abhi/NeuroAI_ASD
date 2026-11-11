@@ -40,24 +40,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="NeuroAI API", lifespan=lifespan)
 
-cors_env = os.environ.get("CORS_ORIGINS", "")
-if cors_env:
-    allowed_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"^https://.*\.onrender\.com$|^http://(localhost|127\.0\.0\.1)(:\d+)?$",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# Allow CORS from all origins (Render frontend, localhost, custom domains)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 MODEL_DIR = Path(__file__).parent / "models"
 
@@ -68,6 +58,22 @@ def get_corpus_retriever():
     if corpus_retriever_instance is None:
         corpus_retriever_instance = CorpusRetriever()
     return corpus_retriever_instance
+
+
+# ── Health & Root ─────────────────────────────────────────────
+
+@app.get("/")
+def root():
+    return {
+        "status": "online",
+        "service": "NeuroAI API",
+        "version": "1.0.0",
+        "endpoints": {
+            "status": "/api/status",
+            "docs": "/docs",
+            "models_comparison": "/api/models/comparison",
+        },
+    }
 
 
 # ── Status ───────────────────────────────────────────────────
