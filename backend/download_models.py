@@ -75,6 +75,16 @@ def ensure_models_exist():
     else:
         print(f"\n[✓] All {len(present)} required model artifacts are verified in backend/models/.")
 
+    # Pre-build matplotlib font cache during build step so runtime does not spend memory/time
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.font_manager
+        matplotlib.font_manager._load_fontmanager()
+        print("[✓] Matplotlib font cache pre-initialized during build.")
+    except Exception:
+        pass
+
     # Return success so deployment builds do not fail
     return 0
 

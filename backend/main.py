@@ -34,13 +34,8 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async def _warmup():
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, ml.load_clinical_models)
-        await loop.run_in_executor(None, ml.load_mri_ensemble)
-        await loop.run_in_executor(None, get_corpus_retriever)
-
-    asyncio.create_task(_warmup())
+    # Minimal startup footprint (<100MB) for constrained deployment environments (e.g. Render 512MB)
+    # Heavy models are loaded lazily on-demand when endpoints are called.
     yield
 
 app = FastAPI(title="NeuroAI API", lifespan=lifespan)
@@ -79,15 +74,15 @@ def get_corpus_retriever():
 
 @app.get("/api/status")
 def status():
-    _, _, _, clinical_ok = ml.load_clinical_models()
-    resnet, effnet, _, mri_ok = ml.load_mri_ensemble()
     has_api_key = bool(os.environ.get("GROQ_API_KEY") or os.environ.get("OPENAI_API_KEY"))
     meta = ml.get_mri_metadata()
+    clinical_file_ok = (MODEL_DIR / "best_binary_model.pkl").exists()
+    mri_file_ok = (MODEL_DIR / "mri_ensemble_v3.pkl").exists()
     return {
-        "clinical_ensemble": clinical_ok,
-        "mri_resnet": mri_ok,
-        "mri_effnet": mri_ok and effnet is not None,
-        "mri_model_version": meta.get("version", "mri_ensemble_v3.pkl") if mri_ok else None,
+        "clinical_ensemble": clinical_file_ok,
+        "mri_resnet": mri_file_ok,
+        "mri_effnet": mri_file_ok,
+        "mri_model_version": meta.get("version", "mri_ensemble_v3.pkl") if mri_file_ok else None,
         "xai_engine": True,
         "rag_engine": True,
         "llm_api_configured": has_api_key,

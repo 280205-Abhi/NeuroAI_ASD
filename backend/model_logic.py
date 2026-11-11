@@ -13,6 +13,11 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 
+# Use headless Agg backend to prevent font cache and GUI memory overhead on servers
+os.environ["MPLBACKEND"] = "Agg"
+import matplotlib
+matplotlib.use("Agg")
+
 import cv2
 import numpy as np
 import pandas as pd
@@ -25,10 +30,10 @@ from torchvision.models import efficientnet_b0
 
 warnings.filterwarnings("ignore")
 
-# Limit PyTorch CPU thread count to prevent thread contention on Windows
+# Limit PyTorch CPU thread count to 1 to minimize memory usage and prevent contention on 512MB instances
 if hasattr(torch, "set_num_threads"):
     try:
-        torch.set_num_threads(min(4, os.cpu_count() or 4))
+        torch.set_num_threads(1)
     except Exception:
         pass
 
@@ -149,6 +154,11 @@ def load_mri_ensemble():
             effnet.load_state_dict(bundle["effnet_state"], strict=True)
             effnet = effnet.to(device)
             effnet.eval()
+
+            # Free the 60MB raw bundle dict from RAM immediately
+            del bundle
+            import gc
+            gc.collect()
 
             return resnet, effnet, device, True
 
