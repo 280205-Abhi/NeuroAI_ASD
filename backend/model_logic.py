@@ -89,11 +89,29 @@ def load_clinical_models():
 
 # ── MRI ensemble ─────────────────────────────────────────────
 
+_mri_metadata = {
+    "version": "mri_ensemble_v3.pkl",
+    "threshold": 0.322,
+    "weights": [0.5, 0.5],
+}
+
+
+def get_mri_metadata():
+    return _mri_metadata
+
+
 @lru_cache(maxsize=1)
 def load_mri_ensemble():
+    global _mri_metadata
     try:
-        paths = [MODEL_DIR / "mri_ensemble_new.pkl", MODEL_DIR / "mri_ensemble.pkl", MODEL_DIR / "honest_mri_model.pkl"]
+        paths = [
+            MODEL_DIR / "mri_ensemble_v3.pkl",
+            MODEL_DIR / "mri_ensemble_new.pkl",
+            MODEL_DIR / "mri_ensemble.pkl",
+            MODEL_DIR / "honest_mri_model.pkl",
+        ]
         bundle = None
+        chosen_path = None
 
         class CPU_Unpickler(pickle.Unpickler):
             def find_class(self, module, name):
@@ -107,6 +125,7 @@ def load_mri_ensemble():
             if p.exists():
                 with open(p, "rb") as f:
                     bundle = CPU_Unpickler(f).load()
+                chosen_path = p
                 break
 
         if bundle is None:
@@ -114,6 +133,26 @@ def load_mri_ensemble():
 
         device = torch.device("cpu")
 
+        if chosen_path and chosen_path.name == "mri_ensemble_v3.pkl":
+            _mri_metadata["version"] = "mri_ensemble_v3.pkl"
+            _mri_metadata["threshold"] = float(bundle.get("threshold", 0.322))
+            _mri_metadata["weights"] = bundle.get("weights", [0.5, 0.5])
+
+            resnet = models.resnet18(weights=None)
+            resnet.fc = nn.Sequential(nn.Dropout(0.2), nn.Linear(512, 2))
+            resnet.load_state_dict(bundle["resnet_state"], strict=True)
+            resnet = resnet.to(device)
+            resnet.eval()
+
+            effnet = efficientnet_b0(weights=None)
+            effnet.classifier[1] = nn.Linear(1280, 2)
+            effnet.load_state_dict(bundle["effnet_state"], strict=True)
+            effnet = effnet.to(device)
+            effnet.eval()
+
+            return resnet, effnet, device, True
+
+        # Fallback for older model bundles
         resnet = models.resnet18(weights=None)
         resnet.fc = nn.Sequential(
             nn.Dropout(0.5), nn.Linear(512, 256), nn.ReLU(), nn.BatchNorm1d(256),
@@ -148,14 +187,20 @@ def load_mri_ensemble():
         return None, None, None, False
 
 
+def is_grayscale_image(pil_image):
+    """Detect whether an image is grayscale (out of domain for false-colour ABIDE model)."""
+    if pil_image.mode in ("L", "1"):
+        return True
+    arr = np.array(pil_image.convert("RGB"))
+    diff_rg = np.abs(arr[:, :, 0].astype(int) - arr[:, :, 1].astype(int))
+    diff_rb = np.abs(arr[:, :, 0].astype(int) - arr[:, :, 2].astype(int))
+    max_diff = max(int(np.max(diff_rg)), int(np.max(diff_rb)))
+    return max_diff < 10
+
+
 def preprocess_mri_image(pil_image):
-    img_rgb = pil_image.convert("RGB")
-    arr = np.array(img_rgb)
-    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(gray)
-    enhanced_rgb = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2RGB)
-    return Image.fromarray(enhanced_rgb)
+    """Raw RGB conversion without CLAHE or grayscale conversion."""
+    return pil_image.convert("RGB")
 
 
 def check_image_domain(pil_image):
@@ -163,9 +208,9 @@ def check_image_domain(pil_image):
     w, h = pil_image.size
     out = []
     if w / max(h, 1) > 1.3:
-        out.append(f"Landscape image ({w}x{h}). Training images were nearly square. CLAHE applied.")
+        out.append(f"Landscape image ({w}x{h}). Training images were nearly square.")
     if arr.mean() < 50:
-        out.append(f"Very dark image (mean {arr.mean():.0f}/255). May be from a different pipeline. CLAHE applied.")
+        out.append(f"Very dark image (mean {arr.mean():.0f}/255). May be from a different acquisition protocol.")
     if pil_image.mode == "RGBA":
         out.append("RGBA image — converted to RGB automatically.")
     return out
@@ -245,22 +290,32 @@ def predict_mri(image_input, resnet, effnet, device):
         with torch.no_grad():
             out_r = resnet(inp)
             pr = torch.softmax(out_r, dim=1)
+            r_prob = pr[0][1].item()
             if effnet is not None:
                 out_e = effnet(inp)
                 pe = torch.softmax(out_e, dim=1)
-                probs = 0.6 * pr + 0.4 * pe
-                r_prob = pr[0][1].item()
+                w = _mri_metadata.get("weights", [0.5, 0.5])
+                probs = w[0] * pr + w[1] * pe
                 e_prob = pe[0][1].item()
             else:
                 probs = pr
-                r_prob = pr[0][1].item()
                 e_prob = None
 
-        pred_idx = torch.argmax(probs).item()
-        label = "ASD" if pred_idx == 1 else "NonASD"
-        asd_prob = probs[0][1].item()
-        non_prob = probs[0][0].item()
-        confidence = probs[0][pred_idx].item()
+        raw_asd_prob = probs[0][1].item()
+        threshold = _mri_metadata.get("threshold", 0.322)
+
+        # Re-center so 0.5 = decision threshold
+        if raw_asd_prob < threshold:
+            asd_prob = 0.5 * (raw_asd_prob / threshold)
+        else:
+            asd_prob = 0.5 + 0.5 * ((raw_asd_prob - threshold) / (1.0 - threshold))
+
+        asd_prob = max(0.0, min(1.0, asd_prob))
+        non_prob = 1.0 - asd_prob
+        inconclusive = abs(asd_prob - 0.5) < 0.05
+        pred_idx = 1 if asd_prob >= 0.5 else 0
+        label = "Inconclusive" if inconclusive else ("ASD" if pred_idx == 1 else "NonASD")
+        confidence = max(asd_prob, non_prob)
 
         cam = GradCAMPlusPlus(model=resnet, target_layers=[resnet.layer4[-1]])
         grayscale_cam = cam(input_tensor=inp, targets=None)[0]
@@ -274,10 +329,61 @@ def predict_mri(image_input, resnet, effnet, device):
             "confidence": confidence,
             "asd_prob": asd_prob,
             "non_prob": non_prob,
+            "raw_asd_prob": raw_asd_prob,
+            "threshold": threshold,
+            "inconclusive": inconclusive,
+            "model_version": _mri_metadata.get("version", "mri_ensemble_v3.pkl"),
             "heatmap_b64": pil_to_b64(heatmap_img),
             "original_b64": pil_to_b64(orig_resized),
             "resnet_prob": r_prob,
             "effnet_prob": e_prob,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def predict_mri_subject(images, resnet, effnet, device):
+    try:
+        slice_results = []
+        raw_probs = []
+        for img in images:
+            res = predict_mri(img, resnet, effnet, device)
+            if not res.get("success"):
+                return res
+            slice_results.append(res)
+            raw_probs.append(res["raw_asd_prob"])
+
+        mean_raw_asd_prob = float(np.mean(raw_probs))
+        threshold = _mri_metadata.get("threshold", 0.322)
+
+        if mean_raw_asd_prob < threshold:
+            asd_prob = 0.5 * (mean_raw_asd_prob / threshold)
+        else:
+            asd_prob = 0.5 + 0.5 * ((mean_raw_asd_prob - threshold) / (1.0 - threshold))
+
+        asd_prob = max(0.0, min(1.0, asd_prob))
+        non_prob = 1.0 - asd_prob
+        inconclusive = abs(asd_prob - 0.5) < 0.05
+        label = "Inconclusive" if inconclusive else ("ASD" if asd_prob >= 0.5 else "NonASD")
+        confidence = max(asd_prob, non_prob)
+        badge, badge_class = get_risk_badge(asd_prob)
+        if inconclusive:
+            badge = "Inconclusive"
+
+        return {
+            "success": True,
+            "num_slices": len(images),
+            "prediction": label,
+            "confidence": confidence,
+            "asd_prob": asd_prob,
+            "non_prob": non_prob,
+            "raw_asd_prob": mean_raw_asd_prob,
+            "threshold": threshold,
+            "inconclusive": inconclusive,
+            "risk_badge": badge,
+            "risk_badge_class": badge_class,
+            "model_version": _mri_metadata.get("version", "mri_ensemble_v3.pkl"),
+            "slice_results": slice_results,
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { PageHeader, Card } from "../components/ui";
+import { api } from "../lib/api";
 
 const STEPS = [
   ["🧠", "MRI Analysis", "Upload brain MRI → Get ASD prediction + heatmap"],
@@ -16,6 +17,26 @@ const ARCH = [
 ];
 
 export default function Overview() {
+  const [mriAcc, setMriAcc] = useState("72.6%");
+
+  useEffect(() => {
+    api.modelsComparison()
+      .then((data) => {
+        if (data?.mri && Array.isArray(data.mri)) {
+          const ensembleRow = data.mri.find((r) =>
+            (r.Model || r.model || "").toLowerCase().includes("ensemble (")
+          );
+          if (ensembleRow) {
+            const acc = ensembleRow["Subject acc"] ?? ensembleRow.test_acc;
+            if (acc != null) {
+              setMriAcc(`${(Number(acc) * 100).toFixed(1)}%`);
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div>
       <PageHeader
@@ -23,18 +44,15 @@ export default function Overview() {
         subtitle="Explainable AI based ASD Classification and Severity Estimation using Ensemble Learning"
       />
 
-      <div className="disclaimer">
-        ⚠️ <strong>Research Tool Disclaimer:</strong> This system is designed for
-        academic research and clinical decision support only. It does not
-        constitute a medical diagnosis. All predictions must be reviewed by a
-        qualified healthcare professional.
+      <div className="disclaimer" style={{ marginBottom: "1rem" }}>
+        ⚠️ <strong>Research Prototype Notice:</strong> Research prototype, not a diagnostic tool. Trained on false-colour ABIDE slices; subject-level accuracy about 69-73%.
       </div>
 
       <div className="stat-grid" style={{ marginBottom: "1.5rem" }}>
-        <Card title="MRI Accuracy" value="83.2%" sub="ResNet18 + EfficientNet" />
+        <Card title="MRI Subject Acc" value={mriAcc} sub="ResNet18 + EffNet (v3)" />
         <Card title="Clinical Accuracy" value="96.5%" sub="Random Forest Ensemble" />
         <Card title="Models Compared" value="17" sub="Clinical + MRI combined" />
-        <Card title="Training Images" value="10,665" sub="ABIDE dataset" />
+        <Card title="Validation Subjects" value="175" sub="Subject-level test set" />
       </div>
 
       <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "2rem 0" }} />

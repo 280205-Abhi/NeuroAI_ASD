@@ -155,11 +155,21 @@ def generate_pdf(patient_name, patient_age, mri_result=None, q_result=None, clin
     # ── 01. STRUCTURAL MRI BRAIN ANALYSIS ──
     if mri_result and mri_result.get("success"):
         story.append(Paragraph("01. STRUCTURAL MRI BRAIN ANALYSIS", sec_hdr_s))
-        pred = mri_result["prediction"]
-        pred_label = "ASD Pattern Detected" if pred == "ASD" else "Control / Non-ASD"
-        m_color = colors.HexColor("#FEE2E2") if pred == "ASD" else colors.HexColor("#DCFCE7")
-        m_txt_color = "#DC2626" if pred == "ASD" else "#15803D"
-        conf_val = f"{mri_result['confidence']*100:.1f}%"
+        pred = mri_result.get("prediction", "N/A")
+        is_inconclusive = mri_result.get("inconclusive", False) or pred == "Inconclusive"
+        if is_inconclusive:
+            pred_label = "Inconclusive / Borderline"
+            m_color = colors.HexColor("#FEF3C7")
+            m_txt_color = "#B45309"
+        elif pred == "ASD":
+            pred_label = "ASD Pattern Detected"
+            m_color = colors.HexColor("#FEE2E2")
+            m_txt_color = "#DC2626"
+        else:
+            pred_label = "Control / Non-ASD"
+            m_color = colors.HexColor("#DCFCE7")
+            m_txt_color = "#15803D"
+        conf_val = f"{mri_result.get('confidence', 0)*100:.1f}%"
 
         mri_table = Table([
             [Paragraph("ENSEMBLE CLASSIFICATION", header_cell_s), Paragraph(f"<font color='{m_txt_color}'><b>{pred_label}</b></font>", cell_s)],
@@ -176,6 +186,11 @@ def generate_pdf(patient_name, patient_age, mri_result=None, q_result=None, clin
             ('LEFTPADDING', (0, 0), (-1, -1), 5),
         ]))
         story.append(mri_table)
+        story.append(Spacer(1, 2))
+        story.append(Paragraph(
+            "<i>MRI Disclaimer: Research prototype, not a diagnostic tool. Trained on false-colour ABIDE slices; subject-level accuracy about 69-73%.</i>",
+            note_s
+        ))
 
     # ── 02. BEHAVIORAL SCREENING (M-CHAT-R) ──
     if q_result:

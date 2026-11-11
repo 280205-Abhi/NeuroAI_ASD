@@ -66,10 +66,12 @@ def status():
     _, _, _, clinical_ok = ml.load_clinical_models()
     resnet, effnet, _, mri_ok = ml.load_mri_ensemble()
     has_api_key = bool(os.environ.get("GROQ_API_KEY") or os.environ.get("OPENAI_API_KEY"))
+    meta = ml.get_mri_metadata()
     return {
         "clinical_ensemble": clinical_ok,
         "mri_resnet": mri_ok,
         "mri_effnet": mri_ok and effnet is not None,
+        "mri_model_version": meta.get("version", "mri_ensemble_v3.pkl") if mri_ok else None,
         "xai_engine": True,
         "rag_engine": True,
         "llm_api_configured": has_api_key,
@@ -87,6 +89,12 @@ def mri_predict(file: UploadFile = File(...)):
     raw_bytes = file.file.read()
     img = Image.open(io.BytesIO(raw_bytes))
 
+    if ml.is_grayscale_image(img):
+        raise HTTPException(
+            status_code=422,
+            detail="Out-of-domain image: The model was trained on false-colour ABIDE sMRI slices and requires 3-channel colour inputs. Grayscale images are not supported."
+        )
+
     preprocessed = ml.preprocess_mri_image(img)
     domain_warnings = ml.check_image_domain(img)
 
@@ -95,10 +103,39 @@ def mri_predict(file: UploadFile = File(...)):
         raise HTTPException(500, result.get("error", "Prediction failed"))
 
     badge, badge_class = ml.get_risk_badge(result["asd_prob"])
+    if result.get("inconclusive"):
+        badge = "Inconclusive"
     result["risk_badge"] = badge
     result["risk_badge_class"] = badge_class
     result["preprocessed_b64"] = ml.pil_to_b64(preprocessed.resize((224, 224)))
     result["domain_warnings"] = domain_warnings
+    return result
+
+
+@app.post("/api/mri/predict_subject")
+def mri_predict_subject(files: list[UploadFile] = File(...)):
+    resnet, effnet, device, ok = ml.load_mri_ensemble()
+    if not ok:
+        raise HTTPException(503, "MRI model not loaded. Check backend/models/ folder.")
+
+    if not files:
+        raise HTTPException(400, "No slice files uploaded.")
+
+    pil_images = []
+    for f in files:
+        raw_bytes = f.file.read()
+        img = Image.open(io.BytesIO(raw_bytes))
+        if ml.is_grayscale_image(img):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Out-of-domain image in slice '{f.filename}': The model was trained on false-colour ABIDE sMRI slices and requires 3-channel colour inputs. Grayscale images are not supported."
+            )
+        pil_images.append(img)
+
+    result = ml.predict_mri_subject(pil_images, resnet, effnet, device)
+    if not result.get("success"):
+        raise HTTPException(500, result.get("error", "Subject prediction failed"))
+
     return result
 
 
@@ -181,17 +218,22 @@ def models_comparison():
     clinical = []
     if csv_path.exists():
         df = pd.read_csv(csv_path)
-        clinical = df.to_dict(orient="records")
+        clinical = [{k: (None if pd.isna(v) else v) for k, v in row.items()} for row in df.to_dict(orient="records")]
 
-    mri_path = MODEL_DIR / "mri_results.csv"
+    mri_path = MODEL_DIR / "model_comparison.csv"
+    if not mri_path.exists():
+        mri_path = MODEL_DIR / "mri_results.csv"
+
+    mri = []
     if mri_path.exists():
-        mri = pd.read_csv(mri_path).to_dict(orient="records")
+        df_mri = pd.read_csv(mri_path)
+        mri = [{k: (None if pd.isna(v) else v) for k, v in row.items()} for row in df_mri.to_dict(orient="records")]
     else:
         mri = [
-            {"model": "PCA + VotingClassifier", "test_acc": 0.650, "auc": 0.720, "approach": "Traditional ML", "semester": "Previous", "val_samples": 41},
-            {"model": "ResNet18", "test_acc": 0.832, "auc": 0.9024, "approach": "Deep Learning", "semester": "Current", "val_samples": 2134},
-            {"model": "EfficientNet-B0", "test_acc": 0.820, "auc": 0.890, "approach": "Deep Learning", "semester": "Current", "val_samples": 2134},
-            {"model": "ResNet18+EfficientNet", "test_acc": 0.840, "auc": 0.910, "approach": "Deep Learning Ensemble", "semester": "Current", "val_samples": 2134},
+            {"Model": "ResNet18", "Slice acc": 0.6849, "Subject acc": 0.7029, "Subject AUC": 0.7745, "Sensitivity": 0.5570, "Specificity": 0.8229},
+            {"Model": "EfficientNet-B0", "Slice acc": 0.7067, "Subject acc": 0.7543, "Subject AUC": 0.7698, "Sensitivity": 0.5823, "Specificity": 0.8958},
+            {"Model": "Ensemble (ResNet18 + EfficientNet-B0)", "Slice acc": 0.7117, "Subject acc": 0.7257, "Subject AUC": 0.7872, "Sensitivity": 0.5696, "Specificity": 0.8542},
+            {"Model": "Ensemble, tuned threshold 0.32", "Slice acc": None, "Subject acc": 0.6857, "Subject AUC": 0.7872, "Sensitivity": 0.6962, "Specificity": 0.6771},
         ]
 
     return {"clinical": clinical, "mri": mri}

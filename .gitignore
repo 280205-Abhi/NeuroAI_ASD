@@ -26,6 +26,13 @@ pip-wheel-metadata/
 *.ckpt
 *.h5
 !backend/models/**
+backend/old_models/
+
+# Raw Datasets & archives
+dataset/
+data/
+*.zip
+*.tar.gz
 
 # Node / Vite
 node_modules/
@@ -52,6 +59,7 @@ chroma_db/
 Thumbs.db
 .vscode/
 .idea/
+*.bak
 
 # Logs
 *.log

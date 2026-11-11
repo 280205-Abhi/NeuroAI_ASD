@@ -1,3 +1,4 @@
+
 const BASE = "/api";
 
 async function handle(res) {
@@ -9,7 +10,10 @@ async function handle(res) {
     } catch {
       /* ignore */
     }
-    throw new Error(detail);
+    const err = new Error(detail);
+    err.status = res.status;
+    err.detail = detail;
+    throw err;
   }
   return res.json();
 }
@@ -21,6 +25,11 @@ export const api = {
     const fd = new FormData();
     fd.append("file", file);
     return fetch(`${BASE}/mri/predict`, { method: "POST", body: fd }).then(handle);
+  },
+  mriPredictSubject: (files) => {
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f));
+    return fetch(`${BASE}/mri/predict_subject`, { method: "POST", body: fd }).then(handle);
   },
   mriShap: (file) => {
     const fd = new FormData();
@@ -66,4 +75,6 @@ export const api = {
     if (!res.ok) throw new Error("Report generation failed");
     return res.blob();
   },
+
+  modelsComparison: () => fetch(`${BASE}/models/comparison`).then(handle),
 };

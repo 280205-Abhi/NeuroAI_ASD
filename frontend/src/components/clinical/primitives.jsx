@@ -123,7 +123,7 @@ export function Disclaimer() {
     <div style={{ padding: "0.65rem 0.85rem", background: "var(--risk-moderate-soft)", border: "1px solid var(--risk-moderate-border)", borderRadius: "var(--radius)", fontSize: "0.75rem", color: "var(--risk-moderate)", display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
       <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />
       <div>
-        <strong>Clinical Decision Support Notice:</strong> NeuroAI outputs are probabilistic model estimates for clinical research and review only. They do NOT constitute a medical diagnosis and must be interpreted alongside formal standardized developmental evaluation.
+        <strong>Research prototype, not a diagnostic tool.</strong> Trained on false-colour ABIDE slices; subject-level accuracy about 69-73%. NeuroAI outputs are probabilistic model estimates for clinical research and review only and do NOT constitute a medical diagnosis.
       </div>
     </div>
   );

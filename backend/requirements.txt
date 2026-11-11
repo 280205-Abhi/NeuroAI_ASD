@@ -6,15 +6,12 @@ pandas
 scikit-learn
 shap
 matplotlib
-plotly
 Pillow
 torch
 torchvision
-librosa
-soundfile
 opencv-python-headless
 reportlab
-grad-cam
+grad-cam  # PyPI package providing pytorch-grad-cam / pytorch_grad_cam
 python-dotenv
 pydantic
 openai

@@ -84,14 +84,14 @@ function createDemoMriBlob() {
   ctx.lineWidth = 3;
   ctx.stroke();
 
-  // Brain parenchyma (grayscale)
+  // Brain parenchyma (false-colour ABIDE pattern: R != G != B)
   ctx.beginPath();
   ctx.ellipse(128, 128, 80, 94, 0, 0, 2 * Math.PI);
-  ctx.fillStyle = "#64748b";
+  ctx.fillStyle = "#6366f1"; // Indigo / violet (false colour)
   ctx.fill();
 
-  // Sulci & gyri patterns
-  ctx.fillStyle = "#334155";
+  // Sulci & gyri patterns (tinted)
+  ctx.fillStyle = "#ec4899"; // Pink / magenta
   for (let i = 0; i < 20; i++) {
     const rx = 50 + (i * 7) % 150;
     const ry = 45 + (i * 11) % 160;
@@ -101,7 +101,7 @@ function createDemoMriBlob() {
   }
 
   // Ventricles
-  ctx.fillStyle = "#0f172a";
+  ctx.fillStyle = "#06b6d4"; // Cyan
   ctx.beginPath();
   ctx.ellipse(114, 120, 7, 26, -0.2, 0, 2 * Math.PI);
   ctx.fill();
@@ -127,6 +127,7 @@ export default function MriAnalysis() {
   const [pendingFile, setPendingFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(mriResult?.previewUrl || null);
   const [fallbackHeatmap, setFallbackHeatmap] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
 
   useEffect(() => {
     if (previewUrl && !mriResult?.heatmap_b64) {
@@ -153,12 +154,14 @@ export default function MriAnalysis() {
     setSelectedFile(file);
     setPreviewUrl(url);
     setPendingFile(file);
+    setErrorMessage(null);
     setLoading(true);
   }
 
   async function executeMriAnalysis() {
     const file = pendingFile || selectedFile;
     const url = previewUrl || (file ? URL.createObjectURL(file) : null);
+    setErrorMessage(null);
     try {
       const result = await api.mriPredict(file);
       const heatmap = result.heatmap_b64 || (await generateHeatmapOverlay(url));
@@ -170,19 +173,10 @@ export default function MriAnalysis() {
         previewUrl: url,
       });
     } catch (e) {
-      const mockHeatmap = await generateHeatmapOverlay(url);
-      const mockResult = {
-        success: true,
-        prediction: "ASD",
-        confidence: 0.884,
-        asd_prob: 0.884,
-        non_prob: 0.116,
-        risk_badge: "High Risk",
-        heatmap_b64: mockHeatmap,
-        original_b64: url,
-        previewUrl: url,
-      };
-      setMriResult(mockResult);
+      console.error("MRI Prediction failed:", e);
+      const msg = e.detail || e.message || "MRI analysis failed.";
+      setErrorMessage(msg);
+      setMriResult(null);
     } finally {
       setLoading(false);
       setPendingFile(null);
@@ -196,8 +190,9 @@ export default function MriAnalysis() {
   }
 
   const hasResult = !!mriResult?.success && !loading;
+  const isInconclusive = !!mriResult?.inconclusive;
   const isAsd = mriResult?.prediction === "ASD";
-  const predVal = mriResult?.prediction || "Pending";
+  const predVal = isInconclusive ? "Inconclusive" : (mriResult?.prediction || "Pending");
   const confVal = mriResult?.confidence ?? 0;
 
   const displayOriginal = mriResult?.original_b64 || previewUrl;
@@ -210,10 +205,10 @@ export default function MriAnalysis() {
           icon="brain"
           title="Running Brain MRI Deep Learning Ensemble..."
           steps={[
-            "Preprocessing CLAHE histogram normalization & brain registration...",
+            "Preprocessing raw RGB slices & ImageNet normalization...",
             "Passing scan slices through ResNet-18 + EfficientNet-B0 backbone...",
             "Computing Grad-CAM++ activation maps & anatomical region scoring...",
-            "Finalizing ASD pattern classification & confidence..."
+            "Applying subject-wise validated threshold & finalizing results..."
           ]}
           durationMs={5500}
           onComplete={executeMriAnalysis}
@@ -230,6 +225,17 @@ export default function MriAnalysis() {
           </button>
         }
       />
+
+      {/* Visible Research Prototype Note */}
+      <div style={{ marginBottom: "1rem", padding: "0.6rem 0.85rem", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: "4px solid var(--primary)", borderRadius: "var(--radius)", fontSize: "0.82rem", color: "var(--foreground)" }}>
+        <strong>Research prototype, not a diagnostic tool.</strong> Trained on false-colour ABIDE slices; subject-level accuracy about 69-73%.
+      </div>
+
+      {errorMessage && (
+        <div style={{ marginBottom: "1rem", padding: "0.75rem 1rem", background: "var(--risk-high-soft)", border: "1px solid var(--risk-high-border)", borderRadius: "var(--radius)", color: "var(--risk-high)", fontSize: "0.84rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span>⚠️ {errorMessage}</span>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: "1.25rem", alignItems: "start" }}>
         {/* Left: Scan Upload & Slice Viewer */}
@@ -470,8 +476,12 @@ export default function MriAnalysis() {
             action={
               loading ? (
                 <RiskBadge level="neutral" label="Processing..." />
+              ) : errorMessage ? (
+                <RiskBadge level="high" label="Analysis Error" />
               ) : !hasResult ? (
                 <RiskBadge level="neutral" label="Pending Upload" />
+              ) : isInconclusive ? (
+                <RiskBadge level="moderate" label="Inconclusive" />
               ) : (
                 <RiskBadge level={isAsd ? "high" : "low"} label={isAsd ? "ASD Pattern Detected" : "Control / Non-ASD"} />
               )
@@ -487,6 +497,10 @@ export default function MriAnalysis() {
                   </div>
                 </div>
               </div>
+            ) : errorMessage ? (
+              <div style={{ padding: "1rem", color: "var(--risk-high)", fontSize: "0.82rem" }}>
+                <strong>Analysis Failed:</strong> {errorMessage}
+              </div>
             ) : !hasResult ? (
               <div className="muted" style={{ padding: "1.5rem 0", fontSize: "0.82rem", textAlign: "center" }}>
                 No scan processed yet. Select or drop an MRI slice above to run deep learning classification.
@@ -500,9 +514,15 @@ export default function MriAnalysis() {
 
                 <ConfidenceBar value={confVal} label="Classification Confidence" />
 
+                {isInconclusive && (
+                  <div style={{ padding: "0.55rem 0.75rem", background: "var(--risk-moderate-soft)", border: "1px solid var(--risk-moderate-border)", borderRadius: "var(--radius)", fontSize: "0.78rem", color: "var(--risk-moderate)" }}>
+                    <strong>Inconclusive:</strong> The scan result is near the decision threshold ({typeof mriResult?.threshold === "number" ? mriResult.threshold.toFixed(3) : "0.322"}). Slices do not definitively distinguish ASD vs Control patterns.
+                  </div>
+                )}
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
                   <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-                    <div className="label-caps muted" style={{ fontSize: "0.7rem" }}>ASD PROBABILITY</div>
+                    <div className="label-caps muted" style={{ fontSize: "0.7rem" }}>ASD PROBABILITY (RE-CENTRED)</div>
                     <div className="numeric font-bold" style={{ fontSize: "1rem", color: "var(--risk-high)" }}>
                       {((mriResult?.asd_prob ?? (isAsd ? confVal : 1 - confVal)) * 100).toFixed(1)}%
                     </div>
@@ -515,6 +535,16 @@ export default function MriAnalysis() {
                     </div>
                   </div>
                 </div>
+
+                {mriResult?.model_version && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", justifyContent: "space-between", fontSize: "0.74rem", color: "var(--text-muted)", padding: "0.4rem 0.2rem", borderTop: "1px solid var(--border)" }}>
+                    <span>Model: <strong>{mriResult.model_version}</strong></span>
+                    <span>Threshold: <strong>{typeof mriResult.threshold === "number" ? mriResult.threshold.toFixed(3) : mriResult.threshold}</strong></span>
+                    {typeof mriResult.raw_asd_prob === "number" && (
+                      <span>Raw Prob: <strong>{(mriResult.raw_asd_prob * 100).toFixed(1)}%</strong></span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </Panel>
