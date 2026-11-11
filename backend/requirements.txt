@@ -11,7 +11,6 @@ Pillow
 torch
 torchvision
 reportlab
-grad-cam  # PyPI package providing pytorch-grad-cam / pytorch_grad_cam
 python-dotenv
 pydantic
 openai

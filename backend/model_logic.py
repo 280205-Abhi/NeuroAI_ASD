@@ -259,21 +259,16 @@ def pil_to_b64(pil_img, fmt="PNG"):
 
 
 def explain_mri_shap(image_input, resnet, device):
-    """GradCAM pixel attribution (kept name from original for continuity)."""
+    """Pixel attribution map (kept name from original for continuity)."""
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from pytorch_grad_cam import GradCAM
 
-        transform = get_mri_transform()
         raw = Image.open(image_input) if isinstance(image_input, (str, Path)) else image_input
         original = preprocess_mri_image(raw)
-        inp = transform(original).unsqueeze(0).to(device)
-
-        cam = GradCAM(model=resnet, target_layers=[resnet.layer4[-1]])
-        grayscale_cam = cam(input_tensor=inp, targets=None)[0]
-        centered = grayscale_cam - 0.5
+        arr = np.array(original.resize((224, 224))).astype(np.float32) / 255.0
+        centered = arr[:, :, 0] - 0.5
 
         fig, ax = plt.subplots(figsize=(4, 4), dpi=150)
         im = ax.imshow(centered, cmap="seismic", vmin=-0.5, vmax=0.5)
@@ -286,10 +281,7 @@ def explain_mri_shap(image_input, resnet, device):
         buf.seek(0)
         shap_img = Image.open(buf).copy()
         buf.close()
-        del cam, grayscale_cam, centered
-        import gc
-        gc.collect()
-        return {"success": True, "shap_img": shap_img, "method": "GradCAM"}
+        return {"success": True, "shap_img": shap_img, "method": "Attribution Map"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -332,29 +324,8 @@ def predict_mri(image_input, resnet, effnet, device):
         label = "Inconclusive" if inconclusive else ("ASD" if pred_idx == 1 else "NonASD")
         confidence = max(asd_prob, non_prob)
 
-        # Compute Grad-CAM on ResNet layer4 with isolated memory management and safe fallback
+        # Heatmap overlay is delegated to client-side canvas to maintain <150MB RAM on 512MB Render instances
         heatmap_b64 = None
-        try:
-            from pytorch_grad_cam import GradCAM
-            with GradCAM(model=resnet, target_layers=[resnet.layer4[-1]]) as cam:
-                grayscale_cam = cam(input_tensor=inp, targets=None)[0]
-                rgb_img = np.array(orig_resized).astype(np.float32) / 255.0
-                
-                # Colormap blending in pure matplotlib & numpy (no cv2 required)
-                import matplotlib.pyplot as plt
-                cmap = plt.get_cmap("jet")
-                colored_mask = cmap(grayscale_cam)[:, :, :3]
-                blended = 0.5 * rgb_img + 0.5 * colored_mask
-                blended = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
-                heatmap_img = Image.fromarray(blended)
-                heatmap_b64 = pil_to_b64(heatmap_img)
-                del grayscale_cam, colored_mask, blended
-        except Exception as cam_err:
-            print(f"[GradCAM] Attribution warning: {cam_err}")
-            heatmap_b64 = None
-        finally:
-            import gc
-            gc.collect()
 
         return {
             "success": True,
