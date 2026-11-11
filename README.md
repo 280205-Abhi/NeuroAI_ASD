@@ -74,6 +74,7 @@ NeuroAI is an explainable multimodal clinical decision support platform for Auti
 
 ```
 NeuroAI/
+├── main.py                   # Root entrypoint for deployment (Render / Cloud)
 ├── backend/
 │   ├── main.py               # FastAPI application & REST API routes
 │   ├── model_logic.py        # ML/DL inference, domain check, SHAP, & Grad-CAM++
