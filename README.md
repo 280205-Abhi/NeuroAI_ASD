@@ -77,6 +77,7 @@ NeuroAI/
 ├── backend/
 │   ├── main.py               # FastAPI application & REST API routes
 │   ├── model_logic.py        # ML/DL inference, domain check, SHAP, & Grad-CAM++
+│   ├── download_models.py    # Model artifact verification & deployment checker
 │   ├── report.py             # ReportLab PDF clinical report generator
 │   ├── run_backend.bat       # Windows 1-click launcher
 │   ├── run_backend.sh        # macOS / Linux 1-click launcher
