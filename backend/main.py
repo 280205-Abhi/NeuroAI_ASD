@@ -23,11 +23,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import model_logic as ml
-from rag.models import map_app_state_to_model_results, ModelResults
-from rag.builder import build_query
-from rag.corpus_retriever import CorpusRetriever
-from rag.live_searcher import live_search
-from rag.generator import generate_recommendations
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -56,6 +51,7 @@ corpus_retriever_instance = None
 def get_corpus_retriever():
     global corpus_retriever_instance
     if corpus_retriever_instance is None:
+        from rag.corpus_retriever import CorpusRetriever
         corpus_retriever_instance = CorpusRetriever()
     return corpus_retriever_instance
 
@@ -267,6 +263,11 @@ class RAGApiRequest(BaseModel):
 
 @app.post("/api/rag/recommendations")
 def rag_recommendations(req: RAGApiRequest):
+    from rag.models import map_app_state_to_model_results
+    from rag.builder import build_query
+    from rag.live_searcher import live_search
+    from rag.generator import generate_recommendations
+
     model_results = map_app_state_to_model_results(req.mri_result, req.clinical_result, req.q_result)
     query = build_query(model_results)
 

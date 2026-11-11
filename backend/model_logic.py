@@ -18,10 +18,8 @@ os.environ["MPLBACKEND"] = "Agg"
 import matplotlib
 matplotlib.use("Agg")
 
-import cv2
 import numpy as np
 import pandas as pd
-import shap
 import torch
 import torch.nn as nn
 from PIL import Image
@@ -40,6 +38,7 @@ if hasattr(torch, "set_num_threads"):
 
 @lru_cache(maxsize=32)
 def _get_tree_explainer_cached(model_id, model):
+    import shap
     return shap.TreeExplainer(model)
 
 
@@ -148,16 +147,19 @@ def load_mri_ensemble():
             resnet.load_state_dict(bundle["resnet_state"], strict=True)
             resnet = resnet.to(device)
             resnet.eval()
+            del bundle["resnet_state"]
+            import gc
+            gc.collect()
 
             effnet = efficientnet_b0(weights=None)
             effnet.classifier[1] = nn.Linear(1280, 2)
             effnet.load_state_dict(bundle["effnet_state"], strict=True)
             effnet = effnet.to(device)
             effnet.eval()
+            del bundle["effnet_state"]
 
-            # Free the 60MB raw bundle dict from RAM immediately
+            # Free remaining raw bundle dict from RAM immediately
             del bundle
-            import gc
             gc.collect()
 
             return resnet, effnet, device, True
@@ -254,19 +256,19 @@ def pil_to_b64(pil_img, fmt="PNG"):
 
 
 def explain_mri_shap(image_input, resnet, device):
-    """GradCAM++ pixel attribution (kept name from original for continuity)."""
+    """GradCAM pixel attribution (kept name from original for continuity)."""
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from pytorch_grad_cam import GradCAMPlusPlus
+        from pytorch_grad_cam import GradCAM
 
         transform = get_mri_transform()
         raw = Image.open(image_input) if isinstance(image_input, (str, Path)) else image_input
         original = preprocess_mri_image(raw)
         inp = transform(original).unsqueeze(0).to(device)
 
-        cam = GradCAMPlusPlus(model=resnet, target_layers=[resnet.layer4[-1]])
+        cam = GradCAM(model=resnet, target_layers=[resnet.layer4[-1]])
         grayscale_cam = cam(input_tensor=inp, targets=None)[0]
         centered = grayscale_cam - 0.5
 
@@ -281,16 +283,16 @@ def explain_mri_shap(image_input, resnet, device):
         buf.seek(0)
         shap_img = Image.open(buf).copy()
         buf.close()
-        return {"success": True, "shap_img": shap_img, "method": "GradCAM++"}
+        del cam, grayscale_cam, centered
+        import gc
+        gc.collect()
+        return {"success": True, "shap_img": shap_img, "method": "GradCAM"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
 def predict_mri(image_input, resnet, effnet, device):
     try:
-        from pytorch_grad_cam import GradCAMPlusPlus
-        from pytorch_grad_cam.utils.image import show_cam_on_image
-
         transform = get_mri_transform()
         raw = Image.open(image_input) if isinstance(image_input, (str, Path)) else image_input
         original = preprocess_mri_image(raw)
@@ -327,11 +329,29 @@ def predict_mri(image_input, resnet, effnet, device):
         label = "Inconclusive" if inconclusive else ("ASD" if pred_idx == 1 else "NonASD")
         confidence = max(asd_prob, non_prob)
 
-        cam = GradCAMPlusPlus(model=resnet, target_layers=[resnet.layer4[-1]])
-        grayscale_cam = cam(input_tensor=inp, targets=None)[0]
-        rgb_img = np.array(orig_resized).astype(np.float32) / 255.0
-        heatmap = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True, colormap=2)
-        heatmap_img = Image.fromarray(heatmap)
+        # Compute Grad-CAM on ResNet layer4 with isolated memory management and safe fallback
+        heatmap_b64 = None
+        try:
+            from pytorch_grad_cam import GradCAM
+            cam = GradCAM(model=resnet, target_layers=[resnet.layer4[-1]])
+            grayscale_cam = cam(input_tensor=inp, targets=None)[0]
+            rgb_img = np.array(orig_resized).astype(np.float32) / 255.0
+            
+            # Colormap blending in pure matplotlib & numpy (no cv2 required)
+            import matplotlib.pyplot as plt
+            cmap = plt.get_cmap("jet")
+            colored_mask = cmap(grayscale_cam)[:, :, :3]
+            blended = 0.5 * rgb_img + 0.5 * colored_mask
+            blended = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
+            heatmap_img = Image.fromarray(blended)
+            heatmap_b64 = pil_to_b64(heatmap_img)
+            del cam, grayscale_cam, colored_mask, blended
+        except Exception as cam_err:
+            print(f"[GradCAM] Attribution warning: {cam_err}")
+            heatmap_b64 = None
+        finally:
+            import gc
+            gc.collect()
 
         return {
             "success": True,
@@ -343,7 +363,7 @@ def predict_mri(image_input, resnet, effnet, device):
             "threshold": threshold,
             "inconclusive": inconclusive,
             "model_version": _mri_metadata.get("version", "mri_ensemble_v3.pkl"),
-            "heatmap_b64": pil_to_b64(heatmap_img),
+            "heatmap_b64": heatmap_b64,
             "original_b64": pil_to_b64(orig_resized),
             "resnet_prob": r_prob,
             "effnet_prob": e_prob,

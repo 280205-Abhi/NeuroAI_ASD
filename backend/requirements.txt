@@ -10,12 +10,10 @@ matplotlib
 Pillow
 torch
 torchvision
-opencv-python-headless
 reportlab
 grad-cam  # PyPI package providing pytorch-grad-cam / pytorch_grad_cam
 python-dotenv
 pydantic
 openai
-chromadb
 tavily-python
 ddgs
